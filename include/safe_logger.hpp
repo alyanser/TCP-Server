@@ -10,21 +10,21 @@ public:
          safe_logger(std::mutex & mutex) : m_mutex(mutex){}
 
          template<typename ... Args>
-         void server_log(Args && ... args) noexcept {
+         void server_log(Args && ... args) const noexcept {
                   std::lock_guard guard(m_mutex);
                   std::cout << "server : ";
                   ((std::cout << args),...) << '\n';
          }
 
          template<typename ... Args>
-         void client_log(Args && ... args) noexcept {
+         void client_log(Args && ... args) const noexcept {
                   std::lock_guard guard(m_mutex);
                   std::cout << "client : ";
                   ((std::cout << args),...) << '\n';
          }
 
          template<typename ... Args>
-         void error_log(Args && ... args) noexcept {
+         void error_log(Args && ... args) const noexcept {
                   std::lock_guard guard(m_mutex);
                   std::cerr << "error : ";
                   ((std::cerr << args),...) << '\n';

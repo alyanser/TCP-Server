@@ -17,13 +17,15 @@
 
 class tcp_server {
          enum { MINIMUM_THREAD_COUNT = 1, MAX_CONNECTIONS = 100, TIMEOUT_SECONDS = 5 };
-         
+
          using tcp_socket = asio::ip::tcp::socket;
          using ssl_tcp_socket = asio::ssl::stream<tcp_socket>;
 public:
          tcp_server(uint8_t thread_count,uint16_t listen_port);
          tcp_server(const tcp_server & rhs) = delete;
          tcp_server(tcp_server && rhs) = delete;
+         tcp_server & operator = (const tcp_server & rhs) = delete;
+         tcp_server & operator = (tcp_server && rhs) = delete;
          ~tcp_server();
 private: 
          void shutdown() noexcept;

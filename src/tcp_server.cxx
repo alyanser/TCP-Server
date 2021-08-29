@@ -7,6 +7,7 @@
 #include <tcp_server.hpp>
 #include <asio/dispatch.hpp>
 #include <asio/steady_timer.hpp>
+#include <asio/placeholders.hpp>
 
 tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port)
          : m_ssl_context(asio::ssl::context::sslv23_server), m_resolver(m_io_context), m_executor_guard(m_io_context.get_executor())
@@ -70,14 +71,15 @@ void tcp_server::connection_timeout(){
          m_logger.server_log("status changed to non-listening state");
 
          auto timeout_timer = std::make_shared<asio::steady_timer>(m_io_context);
+
          timeout_timer->expires_from_now(std::chrono::seconds(TIMEOUT_SECONDS));
 
-         timeout_timer->async_wait([this,timeout_timer](const asio::error_code & ec){
+         timeout_timer->async_wait([this,timeout_timer](const asio::error_code & ec) noexcept {
                   if(!ec){
                            m_logger.server_log("connection timeout over. shifting to listening state");
                            asio::post(m_io_context,std::bind(&tcp_server::listen,this));
                   }else{
-                           throw asio::error_code(ec);
+                           m_logger.error_log(ec);
                   }
          });
 }
@@ -99,11 +101,8 @@ void tcp_server::listen(){
          auto client_id_task = std::make_shared<task_type>(std::bind(&tcp_server::get_spare_id,this));
          asio::post(m_io_context,std::bind(&task_type::operator(),client_id_task));
 
-         m_logger.server_log("waiting for new client");
-
-         // asyncronously wait for a client to connect
-         m_acceptor.async_accept(ssl_socket->lowest_layer(),[this,ssl_socket,client_id_task](const asio::error_code & ec){
-                  if(!ec){
+         auto on_accept = [this,ssl_socket,client_id_task](const asio::error_code & error_code) noexcept {
+                  if(!error_code){
                            // client connected. get the id
                            auto new_client_id = client_id_task->get_future().get();
                            m_active_client_ids.insert(new_client_id);
@@ -116,9 +115,13 @@ void tcp_server::listen(){
                            // post for the next client
                            asio::post(m_io_context,std::bind(&tcp_server::listen,this));
                   }else{
-                           m_logger.error_log(ec);
+                           m_logger.error_log(error_code);
                   }
-         });
+         };
+
+         m_logger.server_log("waiting for client to connect");
+         // asyncronously wait for a client to connect
+         m_acceptor.async_accept(ssl_socket->lowest_layer(),std::bind(on_accept,std::placeholders::_1));
 }
 
 void tcp_server::handle_client(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id){
@@ -126,7 +129,7 @@ void tcp_server::handle_client(std::shared_ptr<ssl_tcp_socket> ssl_socket,const 
          ssl_socket->handshake(asio::ssl::stream_base::handshake_type::server);
          m_logger.server_log("handshake successful. connected with client [",client_id,']');
 
-         ssl_socket->lowest_layer().cancel(); // cancel any pending oeprations
+         ssl_socket->lowest_layer().cancel(); // cancel any pending socket oeprations
          ssl_socket->lowest_layer().shutdown(tcp_socket::shutdown_both); // close read and write descriptors
 }
 
