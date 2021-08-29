@@ -46,6 +46,8 @@ void tcp_server::shutdown() noexcept {
 
          m_executor_guard.reset(); // inform the threads there is no more work to do
          m_acceptor.cancel(); // stop any on-going operations
+         m_io_context.stop();
+
          m_logger.server_log("status changed to non-listening state");
 
          for(auto & thread : m_thread_pool){
@@ -83,40 +85,45 @@ void tcp_server::connection_timeout(){
 void tcp_server::listen(){
          m_acceptor.listen();
          m_logger.server_log("status changed to listening state");
-         
-         while(m_server_running){
-                  try{
-                           if(m_active_connections == MAX_CONNECTIONS){
-                                    asio::post(m_io_context,std::bind(&tcp_server::connection_timeout,this));
-                                    return;
-                           }
 
-                           auto ssl_socket = std::make_shared<ssl_tcp_socket>(m_io_context,m_ssl_context);
-                           // get a spare id asyncronously
-                           using task_type = std::packaged_task<uint64_t()>;
-                           auto client_id_task = std::make_shared<task_type>(std::bind(&tcp_server::get_spare_id,this));
-                           auto client_id_future = client_id_task->get_future();
-                           m_io_context.post(std::bind(&task_type::operator(),client_id_task));
-                           // wait for a client to connect
-                           m_acceptor.accept(ssl_socket->lowest_layer());
-                           m_logger.error_log("Stoppped the server\n");
+         if(m_active_connections == MAX_CONNECTIONS){
+                  m_logger.error_log("max connections reached. taking a connection timeout for ",TIMEOUT_SECONDS," seconds");
+                  asio::post(m_io_context,std::bind(&tcp_server::connection_timeout,this));
+                  return;
+         }
+
+         auto ssl_socket = std::make_shared<ssl_tcp_socket>(m_io_context,m_ssl_context);
+
+         // get a spare id asyncronously
+         using task_type = std::packaged_task<uint64_t()>;
+         auto client_id_task = std::make_shared<task_type>(std::bind(&tcp_server::get_spare_id,this));
+         asio::post(m_io_context,std::bind(&task_type::operator(),client_id_task));
+
+         m_logger.server_log("waiting for new client");
+
+         // asyncronously wait for a client to connect
+         m_acceptor.async_accept(ssl_socket->lowest_layer(),[this,ssl_socket,client_id_task](const asio::error_code & ec){
+                  if(!ec){
                            // client connected. get the id
-                           auto new_client_id = client_id_future.get();
+                           auto new_client_id = client_id_task->get_future().get();
                            m_active_client_ids.insert(new_client_id);
                            m_active_connections++;
                            assert(m_active_connections == m_active_client_ids.size());
-                           // forward client to different thread and wait for next client
+
                            m_logger.server_log("client [",new_client_id,"] attempting to connect. proceeding to handshake");
-                           m_io_context.post(std::bind(&tcp_server::handle_client,this,ssl_socket,new_client_id));
-                  }catch(const std::exception & exception){
-                           m_logger.error_log(exception.what());
+                           // forward client to different thread and wait for next client
+                           asio::post(m_io_context,std::bind(&tcp_server::handle_client,this,ssl_socket,new_client_id));
+                           // post for the next client
+                           asio::post(m_io_context,std::bind(&tcp_server::listen,this));
+                  }else{
+                           m_logger.error_log(ec);
                   }
-         }
+         });
 }
 
 void tcp_server::handle_client(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id){
          m_logger.server_log("handshake attempt with client [",client_id,']');
-         ssl_socket->handshake(asio::ssl::stream_base::handshake_type::client);
+         ssl_socket->handshake(asio::ssl::stream_base::handshake_type::server);
          m_logger.server_log("handshake successful. connected with client [",client_id,']');
 
          ssl_socket->lowest_layer().cancel(); // cancel any pending oeprations

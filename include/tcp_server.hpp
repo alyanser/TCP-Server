@@ -17,6 +17,7 @@
 
 class tcp_server {
          enum { MINIMUM_THREAD_COUNT = 1, MAX_CONNECTIONS = 100, TIMEOUT_SECONDS = 5 };
+         
          using tcp_socket = asio::ip::tcp::socket;
          using ssl_tcp_socket = asio::ssl::stream<tcp_socket>;
 public:
