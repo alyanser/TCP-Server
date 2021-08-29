@@ -5,14 +5,15 @@
 #include <vector>
 #include <mutex>
 #include <thread>
+#include <set>
+#include <safe_logger.hpp>
+#include <asio/ssl.hpp>
 #include <asio/io_context.hpp>
 #include <dns_resolver.hpp>
-#include <asio/ssl.hpp>
 #include <asio/executor_work_guard.hpp>
-#include <set>
 
 class tcp_server {
-         enum { MINIMUM_THREADS = 1 };
+         enum { MINIMUM_THREAD_COUNT = 1 };
          using tcp_socket = asio::ip::tcp::socket;
 public:
          tcp_server(uint8_t thread_count,uint16_t listen_port);
@@ -33,6 +34,7 @@ private:
          std::mutex m_mutex;
          const uint16_t m_listen_port;
          std::set<uint64_t> active_client_ids;
+         safe_logger logger;
 };
 
 #endif
