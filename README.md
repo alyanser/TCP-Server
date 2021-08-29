@@ -1,2 +1,2 @@
 # TCP-Server
-A pseudo TCP server implemented with Asio library.
+TCP server implementation with Asio library, using SSL/TLS.
