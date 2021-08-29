@@ -28,11 +28,12 @@ public:
          tcp_server & operator = (tcp_server && rhs) = delete;
          ~tcp_server();
 private: 
+         void listen();
          void shutdown() noexcept;
          void connection_timeout();
+         void configure_ssl_context();
          void configure_acceptor();
-         void listen();
-         void handle_client(std::shared_ptr<ssl_tcp_socket> ssl_stream,uint64_t client_id);
+         void attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_stream,uint64_t client_id);
          uint64_t get_spare_id() const noexcept;
 private:
          asio::io_context m_io_context;
@@ -42,7 +43,7 @@ private:
          safe_logger m_logger;
          asio::ip::tcp::acceptor m_acceptor;
          const uint16_t m_listen_port;
-         std::mutex m_mutex;
+         mutable std::mutex m_mutex;
          std::atomic<bool> m_server_running = true;
          std::vector<std::thread> m_thread_pool;
          std::set<uint64_t> m_active_client_ids;
