@@ -5,21 +5,24 @@
 #include <future>
 #include <asio/ssl.hpp>
 #include <tcp_server.hpp>
+#include <asio/dispatch.hpp>
+#include <asio/steady_timer.hpp>
 
 tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port)
-         : m_ssl_context(asio::ssl::context::tlsv12_server), m_resolver(m_io_context), m_executor_guard(m_io_context.get_executor()), m_listen_port(listen_port), logger(m_mutex)
+         : m_ssl_context(asio::ssl::context::sslv23_server), m_resolver(m_io_context), m_executor_guard(m_io_context.get_executor())
+         , m_logger(m_mutex), m_acceptor(m_io_context), m_listen_port(listen_port)
 {
-         auto worker_thread = [&m_io_context = m_io_context,&m_mutex = m_mutex](){
-                  while(true){
+         auto worker_thread = [this](){
+                  while(m_server_running){
                            try{
                                     m_io_context.run();
-                                    break; // exit if thread gracefully ended
+                                    break; // stop if thread gracefully ended
                            }catch(const std::exception & exception){
-                                    std::lock_guard print_guard(m_mutex);
+                                    m_logger.error_log(exception.what());
                            }
                   }
          };
-                  
+
          thread_count = std::max(thread_count,static_cast<uint8_t>(MINIMUM_THREAD_COUNT));
 
          m_thread_pool.reserve(thread_count);
@@ -28,49 +31,96 @@ tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port)
                   m_thread_pool.emplace_back(std::thread(worker_thread));
          }
 
-         m_io_context.post(std::bind(&tcp_server::listen,this));
+         m_logger.server_log("started with ",static_cast<uint16_t>(thread_count)," threads");
+
+         configure_acceptor();
+         asio::post(m_io_context,std::bind(&tcp_server::listen,this));
 }
 
 tcp_server::~tcp_server(){
+         shutdown();
+}
+
+void tcp_server::shutdown() noexcept {
+         m_server_running = false;
+
          m_executor_guard.reset(); // inform the threads there is no more work to do
-         for(auto & thread : m_thread_pool) thread.join();
+         m_acceptor.cancel(); // stop any on-going operations
+         m_logger.server_log("status changed to non-listening state");
+
+         for(auto & thread : m_thread_pool){
+                  assert(thread.joinable());
+                  thread.join();
+         }
+
+         m_logger.server_log("shutdown");
+}
+
+void tcp_server::configure_acceptor(){
+         asio::ip::tcp::endpoint endpoint(asio::ip::address_v4::any(),m_listen_port);
+         m_acceptor.open(endpoint.protocol());
+         m_acceptor.bind(endpoint);
+         m_logger.server_log("acceptor bound to port number ",m_listen_port);
+}
+
+void tcp_server::connection_timeout(){
+         m_acceptor.cancel();
+         m_logger.server_log("status changed to non-listening state");
+
+         auto timeout_timer = std::make_shared<asio::steady_timer>(m_io_context);
+         timeout_timer->expires_from_now(std::chrono::seconds(TIMEOUT_SECONDS));
+
+         timeout_timer->async_wait([this,timeout_timer](const asio::error_code & ec){
+                  if(!ec){
+                           m_logger.server_log("connection timeout over. shifting to listening state");
+                           asio::post(m_io_context,std::bind(&tcp_server::listen,this));
+                  }else{
+                           throw asio::error_code(ec);
+                  }
+         });
 }
 
 void tcp_server::listen(){
-         asio::ip::tcp::acceptor acceptor(m_io_context);
-
-         {        // configure acceptor
-                  asio::ip::tcp::endpoint endpoint(asio::ip::address_v4::any(),m_listen_port);
-                  acceptor.open(endpoint.protocol());
-                  acceptor.bind(endpoint);
-                  acceptor.listen();
-         }
-
-         while(true){
+         m_acceptor.listen();
+         m_logger.server_log("status changed to listening state");
+         
+         while(m_server_running){
                   try{
-                           // stream with an underlying tcp socket used for tls
-                           auto ssl_stream = std::make_shared<asio::ssl::stream<tcp_socket>>(m_io_context,m_ssl_context);
+                           if(m_active_connections == MAX_CONNECTIONS){
+                                    asio::post(m_io_context,std::bind(&tcp_server::connection_timeout,this));
+                                    return;
+                           }
+
+                           auto ssl_socket = std::make_shared<ssl_tcp_socket>(m_io_context,m_ssl_context);
                            // get a spare id asyncronously
                            using task_type = std::packaged_task<uint64_t()>;
                            auto client_id_task = std::make_shared<task_type>(std::bind(&tcp_server::get_spare_id,this));
                            auto client_id_future = client_id_task->get_future();
                            m_io_context.post(std::bind(&task_type::operator(),client_id_task));
                            // wait for a client to connect
-                           acceptor.accept(ssl_stream->lowest_layer()); // lowest layer being the socket
-                           // get the id
+                           m_acceptor.accept(ssl_socket->lowest_layer());
+                           m_logger.error_log("Stoppped the server\n");
+                           // client connected. get the id
                            auto new_client_id = client_id_future.get();
-                           active_client_ids.insert(new_client_id);
+                           m_active_client_ids.insert(new_client_id);
+                           m_active_connections++;
+                           assert(m_active_connections == m_active_client_ids.size());
                            // forward client to different thread and wait for next client
-                           m_io_context.post(std::bind(&tcp_server::handle_client,this,ssl_stream,new_client_id));
+                           m_logger.server_log("client [",new_client_id,"] attempting to connect. proceeding to handshake");
+                           m_io_context.post(std::bind(&tcp_server::handle_client,this,ssl_socket,new_client_id));
                   }catch(const std::exception & exception){
-                           logger.error_log(exception.what(),'\n');
+                           m_logger.error_log(exception.what());
                   }
          }
 }
 
-void tcp_server::handle_client(std::shared_ptr<asio::ssl::stream<tcp_socket>> ssl_stream,const uint64_t client_id){
-         logger.server_log("New client connected. Id : ",client_id,".\n");
-         ssl_stream->handshake(asio::ssl::stream_base::handshake_type::server);
+void tcp_server::handle_client(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id){
+         m_logger.server_log("handshake attempt with client [",client_id,']');
+         ssl_socket->handshake(asio::ssl::stream_base::handshake_type::client);
+         m_logger.server_log("handshake successful. connected with client [",client_id,']');
+
+         ssl_socket->lowest_layer().cancel(); // cancel any pending oeprations
+         ssl_socket->lowest_layer().shutdown(tcp_socket::shutdown_both); // close read and write descriptors
 }
 
 uint64_t tcp_server::get_spare_id() const noexcept {
@@ -81,7 +131,7 @@ uint64_t tcp_server::get_spare_id() const noexcept {
 
          do{
                   unique_id = id_range(generator);
-         }while(active_client_ids.count(unique_id));
+         }while(m_active_client_ids.count(unique_id));
 
          return unique_id;
 }

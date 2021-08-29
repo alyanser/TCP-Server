@@ -5,14 +5,6 @@
 #include <asio/ip/tcp.hpp>
 #include <string>
 
-namespace asio {
-         class io_context;
-}
-
-namespace std {
-         class mutex;
-}
-
 class dns_resolver {
          using result_type = asio::ip::tcp::resolver::iterator;
 public:
