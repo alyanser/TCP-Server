@@ -2,7 +2,11 @@ cmake_minimum_required(VERSION 3.16.3)
 
 project(tcpserver)
 
-add_executable(${PROJECT_NAME} src/main.cxx)
+add_executable(${PROJECT_NAME} 
+         src/main.cxx 
+         src/dns_resolver.cxx
+         src/tcp_server.cxx
+)
 
 set(CMAKE_CXX_STANDARD "17")
 set(CMAKE_CXX_COMPILER "clang++-12")
@@ -13,10 +17,18 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -fomit-frame-pointer -DNDEBUG")
 
 add_definitions(-DASIO_STANDALONE)
 
-find_package(Threads REQUIRED)
-find_package(OpenSSL REQUIRED)
+find_package(
+         Threads REQUIRED
+         OpenSSL REQUIRED
+)
 
-target_link_libraries(${PROJECT_NAME} Threads::Threads)
-target_link_libraries(${PROJECT_NAME} ${OpenSSL_LIBRARY}) 
+target_link_libraries(${PROJECT_NAME} 
+         Threads::Threads
+         ${OpenSSL_LIBRARY}
+)
 
-include_directories("asio" "include" ${OpenSSL_INCLUDE_DIR})
+include_directories(
+         "asio" 
+         "include" 
+         ${OpenSSL_INCLUDE_DIR}
+)
