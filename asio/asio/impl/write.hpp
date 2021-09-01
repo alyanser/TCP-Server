@@ -15,11 +15,11 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/associator.hpp"
+#include "asio/associated_allocator.hpp"
+#include "asio/associated_executor.hpp"
 #include "asio/buffer.hpp"
 #include "asio/completion_condition.hpp"
 #include "asio/detail/array_fwd.hpp"
-#include "asio/detail/base_from_cancellation_state.hpp"
 #include "asio/detail/base_from_completion_cond.hpp"
 #include "asio/detail/bind_handler.hpp"
 #include "asio/detail/consuming_buffers.hpp"
@@ -288,15 +288,13 @@ namespace detail
       typename ConstBufferIterator, typename CompletionCondition,
       typename WriteHandler>
   class write_op
-    : public base_from_cancellation_state<WriteHandler>,
-      base_from_completion_cond<CompletionCondition>
+    : detail::base_from_completion_cond<CompletionCondition>
   {
   public:
     write_op(AsyncWriteStream& stream, const ConstBufferSequence& buffers,
         CompletionCondition& completion_condition, WriteHandler& handler)
-      : base_from_cancellation_state<WriteHandler>(
-          handler, enable_partial_cancellation()),
-        base_from_completion_cond<CompletionCondition>(completion_condition),
+      : detail::base_from_completion_cond<
+          CompletionCondition>(completion_condition),
         stream_(stream),
         buffers_(buffers),
         start_(0),
@@ -306,8 +304,7 @@ namespace detail
 
 #if defined(ASIO_HAS_MOVE)
     write_op(const write_op& other)
-      : base_from_cancellation_state<WriteHandler>(other),
-        base_from_completion_cond<CompletionCondition>(other),
+      : detail::base_from_completion_cond<CompletionCondition>(other),
         stream_(other.stream_),
         buffers_(other.buffers_),
         start_(other.start_),
@@ -316,11 +313,8 @@ namespace detail
     }
 
     write_op(write_op&& other)
-      : base_from_cancellation_state<WriteHandler>(
-          ASIO_MOVE_CAST(base_from_cancellation_state<
-            WriteHandler>)(other)),
-        base_from_completion_cond<CompletionCondition>(
-          ASIO_MOVE_CAST(base_from_completion_cond<
+      : detail::base_from_completion_cond<CompletionCondition>(
+          ASIO_MOVE_CAST(detail::base_from_completion_cond<
             CompletionCondition>)(other)),
         stream_(other.stream_),
         buffers_(ASIO_MOVE_CAST(buffers_type)(other.buffers_)),
@@ -330,7 +324,7 @@ namespace detail
     }
 #endif // defined(ASIO_HAS_MOVE)
 
-    void operator()(asio::error_code ec,
+    void operator()(const asio::error_code& ec,
         std::size_t bytes_transferred, int start = 0)
     {
       std::size_t max_size;
@@ -338,7 +332,7 @@ namespace detail
       {
         case 1:
         max_size = this->check_for_completion(ec, buffers_.total_consumed());
-        for (;;)
+        do
         {
           {
             ASIO_HANDLER_LOCATION((__FILE__, __LINE__, "async_write"));
@@ -350,18 +344,9 @@ namespace detail
           if ((!ec && bytes_transferred == 0) || buffers_.empty())
             break;
           max_size = this->check_for_completion(ec, buffers_.total_consumed());
-          if (max_size == 0)
-            break;
-          if (this->cancelled() != cancellation_type::none)
-          {
-            ec = error::operation_aborted;
-            break;
-          }
-        }
+        } while (max_size > 0);
 
-        ASIO_MOVE_OR_LVALUE(WriteHandler)(handler_)(
-            static_cast<const asio::error_code&>(ec),
-            static_cast<const std::size_t&>(buffers_.total_consumed()));
+        handler_(ec, buffers_.total_consumed());
       }
     }
 
@@ -502,22 +487,42 @@ namespace detail
 
 #if !defined(GENERATING_DOCUMENTATION)
 
-template <template <typename, typename> class Associator,
-    typename AsyncWriteStream, typename ConstBufferSequence,
+template <typename AsyncWriteStream, typename ConstBufferSequence,
     typename ConstBufferIterator, typename CompletionCondition,
-    typename WriteHandler, typename DefaultCandidate>
-struct associator<Associator,
+    typename WriteHandler, typename Allocator>
+struct associated_allocator<
     detail::write_op<AsyncWriteStream, ConstBufferSequence,
       ConstBufferIterator, CompletionCondition, WriteHandler>,
-    DefaultCandidate>
-  : Associator<WriteHandler, DefaultCandidate>
+    Allocator>
 {
-  static typename Associator<WriteHandler, DefaultCandidate>::type get(
+  typedef typename associated_allocator<WriteHandler, Allocator>::type type;
+
+  static type get(
       const detail::write_op<AsyncWriteStream, ConstBufferSequence,
         ConstBufferIterator, CompletionCondition, WriteHandler>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
+      const Allocator& a = Allocator()) ASIO_NOEXCEPT
   {
-    return Associator<WriteHandler, DefaultCandidate>::get(h.handler_, c);
+    return associated_allocator<WriteHandler, Allocator>::get(h.handler_, a);
+  }
+};
+
+template <typename AsyncWriteStream, typename ConstBufferSequence,
+    typename ConstBufferIterator, typename CompletionCondition,
+    typename WriteHandler, typename Executor>
+struct associated_executor<
+    detail::write_op<AsyncWriteStream, ConstBufferSequence,
+      ConstBufferIterator, CompletionCondition, WriteHandler>,
+    Executor>
+  : detail::associated_executor_forwarding_base<WriteHandler, Executor>
+{
+  typedef typename associated_executor<WriteHandler, Executor>::type type;
+
+  static type get(
+      const detail::write_op<AsyncWriteStream, ConstBufferSequence,
+        ConstBufferIterator, CompletionCondition, WriteHandler>& h,
+      const Executor& ex = Executor()) ASIO_NOEXCEPT
+  {
+    return associated_executor<WriteHandler, Executor>::get(h.handler_, ex);
   }
 };
 
@@ -612,8 +617,7 @@ namespace detail
             ASIO_MOVE_CAST(write_dynbuf_v1_op)(*this));
         return; default:
         buffers_.consume(bytes_transferred);
-        ASIO_MOVE_OR_LVALUE(WriteHandler)(handler_)(ec,
-            static_cast<const std::size_t&>(bytes_transferred));
+        handler_(ec, static_cast<const std::size_t&>(bytes_transferred));
       }
     }
 
@@ -737,22 +741,40 @@ namespace detail
 
 #if !defined(GENERATING_DOCUMENTATION)
 
-template <template <typename, typename> class Associator,
-    typename AsyncWriteStream, typename DynamicBuffer_v1,
-    typename CompletionCondition, typename WriteHandler,
-    typename DefaultCandidate>
-struct associator<Associator,
+template <typename AsyncWriteStream, typename DynamicBuffer_v1,
+    typename CompletionCondition, typename WriteHandler, typename Allocator>
+struct associated_allocator<
     detail::write_dynbuf_v1_op<AsyncWriteStream,
       DynamicBuffer_v1, CompletionCondition, WriteHandler>,
-    DefaultCandidate>
-  : Associator<WriteHandler, DefaultCandidate>
+    Allocator>
 {
-  static typename Associator<WriteHandler, DefaultCandidate>::type get(
+  typedef typename associated_allocator<WriteHandler, Allocator>::type type;
+
+  static type get(
       const detail::write_dynbuf_v1_op<AsyncWriteStream,
         DynamicBuffer_v1, CompletionCondition, WriteHandler>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
+      const Allocator& a = Allocator()) ASIO_NOEXCEPT
   {
-    return Associator<WriteHandler, DefaultCandidate>::get(h.handler_, c);
+    return associated_allocator<WriteHandler, Allocator>::get(h.handler_, a);
+  }
+};
+
+template <typename AsyncWriteStream, typename DynamicBuffer_v1,
+    typename CompletionCondition, typename WriteHandler, typename Executor>
+struct associated_executor<
+    detail::write_dynbuf_v1_op<AsyncWriteStream,
+      DynamicBuffer_v1, CompletionCondition, WriteHandler>,
+    Executor>
+  : detail::associated_executor_forwarding_base<WriteHandler, Executor>
+{
+  typedef typename associated_executor<WriteHandler, Executor>::type type;
+
+  static type get(
+      const detail::write_dynbuf_v1_op<AsyncWriteStream,
+        DynamicBuffer_v1, CompletionCondition, WriteHandler>& h,
+      const Executor& ex = Executor()) ASIO_NOEXCEPT
+  {
+    return associated_executor<WriteHandler, Executor>::get(h.handler_, ex);
   }
 };
 
@@ -888,8 +910,7 @@ namespace detail
             ASIO_MOVE_CAST(write_dynbuf_v2_op)(*this));
         return; default:
         buffers_.consume(bytes_transferred);
-        ASIO_MOVE_OR_LVALUE(WriteHandler)(handler_)(ec,
-            static_cast<const std::size_t&>(bytes_transferred));
+        handler_(ec, static_cast<const std::size_t&>(bytes_transferred));
       }
     }
 
@@ -1013,45 +1034,40 @@ namespace detail
 
 #if !defined(GENERATING_DOCUMENTATION)
 
-template <template <typename, typename> class Associator,
-    typename AsyncWriteStream, typename DynamicBuffer_v2,
-    typename CompletionCondition, typename WriteHandler,
-    typename DefaultCandidate>
-struct associator<Associator,
-    detail::write_dynbuf_v2_op<AsyncWriteStream,
-      DynamicBuffer_v2, CompletionCondition, WriteHandler>,
-    DefaultCandidate>
-  : Associator<WriteHandler, DefaultCandidate>
-{
-  static typename Associator<WriteHandler, DefaultCandidate>::type get(
-      const detail::write_dynbuf_v2_op<AsyncWriteStream,
-        DynamicBuffer_v2, CompletionCondition, WriteHandler>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
-  {
-    return Associator<WriteHandler, DefaultCandidate>::get(h.handler_, c);
-  }
-};
-
 template <typename AsyncWriteStream, typename DynamicBuffer_v2,
-    typename CompletionCondition, typename WriteHandler,
-    typename CancellationSlot>
-struct associated_cancellation_slot<
+    typename CompletionCondition, typename WriteHandler, typename Allocator>
+struct associated_allocator<
     detail::write_dynbuf_v2_op<AsyncWriteStream,
       DynamicBuffer_v2, CompletionCondition, WriteHandler>,
-    CancellationSlot>
-  : detail::associated_cancellation_slot_forwarding_base<
-      WriteHandler, CancellationSlot>
+    Allocator>
 {
-  typedef typename associated_cancellation_slot<
-      WriteHandler, CancellationSlot>::type type;
+  typedef typename associated_allocator<WriteHandler, Allocator>::type type;
 
   static type get(
       const detail::write_dynbuf_v2_op<AsyncWriteStream,
         DynamicBuffer_v2, CompletionCondition, WriteHandler>& h,
-      const CancellationSlot& s = CancellationSlot()) ASIO_NOEXCEPT
+      const Allocator& a = Allocator()) ASIO_NOEXCEPT
   {
-    return associated_cancellation_slot<WriteHandler,
-        CancellationSlot>::get(h.handler_, s);
+    return associated_allocator<WriteHandler, Allocator>::get(h.handler_, a);
+  }
+};
+
+template <typename AsyncWriteStream, typename DynamicBuffer_v2,
+    typename CompletionCondition, typename WriteHandler, typename Executor>
+struct associated_executor<
+    detail::write_dynbuf_v2_op<AsyncWriteStream,
+      DynamicBuffer_v2, CompletionCondition, WriteHandler>,
+    Executor>
+  : detail::associated_executor_forwarding_base<WriteHandler, Executor>
+{
+  typedef typename associated_executor<WriteHandler, Executor>::type type;
+
+  static type get(
+      const detail::write_dynbuf_v2_op<AsyncWriteStream,
+        DynamicBuffer_v2, CompletionCondition, WriteHandler>& h,
+      const Executor& ex = Executor()) ASIO_NOEXCEPT
+  {
+    return associated_executor<WriteHandler, Executor>::get(h.handler_, ex);
   }
 };
 

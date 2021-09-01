@@ -16,11 +16,11 @@
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
 #include <algorithm>
-#include "asio/associator.hpp"
+#include "asio/associated_allocator.hpp"
+#include "asio/associated_executor.hpp"
 #include "asio/buffer.hpp"
 #include "asio/completion_condition.hpp"
 #include "asio/detail/array_fwd.hpp"
-#include "asio/detail/base_from_cancellation_state.hpp"
 #include "asio/detail/base_from_completion_cond.hpp"
 #include "asio/detail/bind_handler.hpp"
 #include "asio/detail/consuming_buffers.hpp"
@@ -176,16 +176,14 @@ namespace detail
       typename MutableBufferSequence, typename MutableBufferIterator,
       typename CompletionCondition, typename ReadHandler>
   class read_at_op
-    : public base_from_cancellation_state<ReadHandler>,
-      base_from_completion_cond<CompletionCondition>
+    : detail::base_from_completion_cond<CompletionCondition>
   {
   public:
     read_at_op(AsyncRandomAccessReadDevice& device,
         uint64_t offset, const MutableBufferSequence& buffers,
         CompletionCondition& completion_condition, ReadHandler& handler)
-      : base_from_cancellation_state<ReadHandler>(
-          handler, enable_partial_cancellation()),
-        base_from_completion_cond<CompletionCondition>(completion_condition),
+      : detail::base_from_completion_cond<
+          CompletionCondition>(completion_condition),
         device_(device),
         offset_(offset),
         buffers_(buffers),
@@ -196,8 +194,7 @@ namespace detail
 
 #if defined(ASIO_HAS_MOVE)
     read_at_op(const read_at_op& other)
-      : base_from_cancellation_state<ReadHandler>(other),
-        base_from_completion_cond<CompletionCondition>(other),
+      : detail::base_from_completion_cond<CompletionCondition>(other),
         device_(other.device_),
         offset_(other.offset_),
         buffers_(other.buffers_),
@@ -207,11 +204,8 @@ namespace detail
     }
 
     read_at_op(read_at_op&& other)
-      : base_from_cancellation_state<ReadHandler>(
-          ASIO_MOVE_CAST(base_from_cancellation_state<
-            ReadHandler>)(other)),
-        base_from_completion_cond<CompletionCondition>(
-          ASIO_MOVE_CAST(base_from_completion_cond<
+      : detail::base_from_completion_cond<CompletionCondition>(
+          ASIO_MOVE_CAST(detail::base_from_completion_cond<
             CompletionCondition>)(other)),
         device_(other.device_),
         offset_(other.offset_),
@@ -222,7 +216,7 @@ namespace detail
     }
 #endif // defined(ASIO_HAS_MOVE)
 
-    void operator()(asio::error_code ec,
+    void operator()(const asio::error_code& ec,
         std::size_t bytes_transferred, int start = 0)
     {
       std::size_t max_size;
@@ -230,7 +224,7 @@ namespace detail
       {
         case 1:
         max_size = this->check_for_completion(ec, buffers_.total_consumed());
-        for (;;)
+        do
         {
           {
             ASIO_HANDLER_LOCATION((__FILE__, __LINE__, "async_read_at"));
@@ -243,18 +237,9 @@ namespace detail
           if ((!ec && bytes_transferred == 0) || buffers_.empty())
             break;
           max_size = this->check_for_completion(ec, buffers_.total_consumed());
-          if (max_size == 0)
-            break;
-          if (this->cancelled() != cancellation_type::none)
-          {
-            ec = asio::error::operation_aborted;
-            break;
-          }
-        }
+        } while (max_size > 0);
 
-        ASIO_MOVE_OR_LVALUE(ReadHandler)(handler_)(
-            static_cast<const asio::error_code&>(ec),
-            static_cast<const std::size_t&>(buffers_.total_consumed()));
+        handler_(ec, buffers_.total_consumed());
       }
     }
 
@@ -398,23 +383,44 @@ namespace detail
 
 #if !defined(GENERATING_DOCUMENTATION)
 
-template <template <typename, typename> class Associator,
-    typename AsyncRandomAccessReadDevice, typename MutableBufferSequence,
-    typename MutableBufferIterator, typename CompletionCondition,
-    typename ReadHandler, typename DefaultCandidate>
-struct associator<Associator,
+template <typename AsyncRandomAccessReadDevice,
+    typename MutableBufferSequence, typename MutableBufferIterator,
+    typename CompletionCondition, typename ReadHandler, typename Allocator>
+struct associated_allocator<
     detail::read_at_op<AsyncRandomAccessReadDevice, MutableBufferSequence,
-      MutableBufferIterator, CompletionCondition, ReadHandler>,
-    DefaultCandidate>
-  : Associator<ReadHandler, DefaultCandidate>
+    MutableBufferIterator, CompletionCondition, ReadHandler>,
+    Allocator>
 {
-  static typename Associator<ReadHandler, DefaultCandidate>::type get(
+  typedef typename associated_allocator<ReadHandler, Allocator>::type type;
+
+  static type get(
       const detail::read_at_op<AsyncRandomAccessReadDevice,
-        MutableBufferSequence, MutableBufferIterator,
-        CompletionCondition, ReadHandler>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
+      MutableBufferSequence, MutableBufferIterator,
+      CompletionCondition, ReadHandler>& h,
+      const Allocator& a = Allocator()) ASIO_NOEXCEPT
   {
-    return Associator<ReadHandler, DefaultCandidate>::get(h.handler_, c);
+    return associated_allocator<ReadHandler, Allocator>::get(h.handler_, a);
+  }
+};
+
+template <typename AsyncRandomAccessReadDevice,
+    typename MutableBufferSequence, typename MutableBufferIterator,
+    typename CompletionCondition, typename ReadHandler, typename Executor>
+struct associated_executor<
+    detail::read_at_op<AsyncRandomAccessReadDevice, MutableBufferSequence,
+    MutableBufferIterator, CompletionCondition, ReadHandler>,
+    Executor>
+  : detail::associated_executor_forwarding_base<ReadHandler, Executor>
+{
+  typedef typename associated_executor<ReadHandler, Executor>::type type;
+
+  static type get(
+      const detail::read_at_op<AsyncRandomAccessReadDevice,
+      MutableBufferSequence, MutableBufferIterator,
+      CompletionCondition, ReadHandler>& h,
+      const Executor& ex = Executor()) ASIO_NOEXCEPT
+  {
+    return associated_executor<ReadHandler, Executor>::get(h.handler_, ex);
   }
 };
 
@@ -463,16 +469,14 @@ namespace detail
   template <typename AsyncRandomAccessReadDevice, typename Allocator,
       typename CompletionCondition, typename ReadHandler>
   class read_at_streambuf_op
-    : public base_from_cancellation_state<ReadHandler>,
-      base_from_completion_cond<CompletionCondition>
+    : detail::base_from_completion_cond<CompletionCondition>
   {
   public:
     read_at_streambuf_op(AsyncRandomAccessReadDevice& device,
         uint64_t offset, basic_streambuf<Allocator>& streambuf,
         CompletionCondition& completion_condition, ReadHandler& handler)
-      : base_from_cancellation_state<ReadHandler>(
-          handler, enable_partial_cancellation()),
-        base_from_completion_cond<CompletionCondition>(completion_condition),
+      : detail::base_from_completion_cond<
+          CompletionCondition>(completion_condition),
         device_(device),
         offset_(offset),
         streambuf_(streambuf),
@@ -484,8 +488,7 @@ namespace detail
 
 #if defined(ASIO_HAS_MOVE)
     read_at_streambuf_op(const read_at_streambuf_op& other)
-      : base_from_cancellation_state<ReadHandler>(other),
-        base_from_completion_cond<CompletionCondition>(other),
+      : detail::base_from_completion_cond<CompletionCondition>(other),
         device_(other.device_),
         offset_(other.offset_),
         streambuf_(other.streambuf_),
@@ -496,11 +499,8 @@ namespace detail
     }
 
     read_at_streambuf_op(read_at_streambuf_op&& other)
-      : base_from_cancellation_state<ReadHandler>(
-          ASIO_MOVE_CAST(base_from_cancellation_state<
-            ReadHandler>)(other)),
-        base_from_completion_cond<CompletionCondition>(
-          ASIO_MOVE_CAST(base_from_completion_cond<
+      : detail::base_from_completion_cond<CompletionCondition>(
+          ASIO_MOVE_CAST(detail::base_from_completion_cond<
             CompletionCondition>)(other)),
         device_(other.device_),
         offset_(other.offset_),
@@ -512,7 +512,7 @@ namespace detail
     }
 #endif // defined(ASIO_HAS_MOVE)
 
-    void operator()(asio::error_code ec,
+    void operator()(const asio::error_code& ec,
         std::size_t bytes_transferred, int start = 0)
     {
       std::size_t max_size, bytes_available;
@@ -536,16 +536,9 @@ namespace detail
           bytes_available = read_size_helper(streambuf_, max_size);
           if ((!ec && bytes_transferred == 0) || bytes_available == 0)
             break;
-          if (this->cancelled() != cancellation_type::none)
-          {
-            ec = asio::error::operation_aborted;
-            break;
-          }
         }
 
-        ASIO_MOVE_OR_LVALUE(ReadHandler)(handler_)(
-            static_cast<const asio::error_code&>(ec),
-            static_cast<const std::size_t&>(total_transferred_));
+        handler_(ec, static_cast<const std::size_t&>(total_transferred_));
       }
     }
 
@@ -669,22 +662,40 @@ namespace detail
 
 #if !defined(GENERATING_DOCUMENTATION)
 
-template <template <typename, typename> class Associator,
-    typename AsyncRandomAccessReadDevice, typename Executor,
-    typename CompletionCondition, typename ReadHandler,
-    typename DefaultCandidate>
-struct associator<Associator,
+template <typename AsyncRandomAccessReadDevice, typename Allocator,
+    typename CompletionCondition, typename ReadHandler, typename Allocator1>
+struct associated_allocator<
+    detail::read_at_streambuf_op<AsyncRandomAccessReadDevice,
+      Allocator, CompletionCondition, ReadHandler>,
+    Allocator1>
+{
+  typedef typename associated_allocator<ReadHandler, Allocator1>::type type;
+
+  static type get(
+      const detail::read_at_streambuf_op<AsyncRandomAccessReadDevice,
+        Allocator, CompletionCondition, ReadHandler>& h,
+      const Allocator1& a = Allocator1()) ASIO_NOEXCEPT
+  {
+    return associated_allocator<ReadHandler, Allocator1>::get(h.handler_, a);
+  }
+};
+
+template <typename AsyncRandomAccessReadDevice, typename Executor,
+    typename CompletionCondition, typename ReadHandler, typename Executor1>
+struct associated_executor<
     detail::read_at_streambuf_op<AsyncRandomAccessReadDevice,
       Executor, CompletionCondition, ReadHandler>,
-    DefaultCandidate>
-  : Associator<ReadHandler, DefaultCandidate>
+    Executor1>
+  : detail::associated_executor_forwarding_base<ReadHandler, Executor>
 {
-  static typename Associator<ReadHandler, DefaultCandidate>::type get(
+  typedef typename associated_executor<ReadHandler, Executor1>::type type;
+
+  static type get(
       const detail::read_at_streambuf_op<AsyncRandomAccessReadDevice,
         Executor, CompletionCondition, ReadHandler>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
+      const Executor1& ex = Executor1()) ASIO_NOEXCEPT
   {
-    return Associator<ReadHandler, DefaultCandidate>::get(h.handler_, c);
+    return associated_executor<ReadHandler, Executor1>::get(h.handler_, ex);
   }
 };
 

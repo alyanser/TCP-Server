@@ -295,18 +295,28 @@ public:
   }
 };
 
-template <template <typename, typename> class Associator,
-    typename Handler, typename T, typename DefaultCandidate>
-struct associator<Associator,
-    detail::coro_handler<Handler, T>,
-    DefaultCandidate>
-  : Associator<Handler, DefaultCandidate>
+template <typename Handler, typename T, typename Allocator>
+struct associated_allocator<detail::coro_handler<Handler, T>, Allocator>
 {
-  static typename Associator<Handler, DefaultCandidate>::type get(
-      const detail::coro_handler<Handler, T>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
+  typedef typename associated_allocator<Handler, Allocator>::type type;
+
+  static type get(const detail::coro_handler<Handler, T>& h,
+      const Allocator& a = Allocator()) ASIO_NOEXCEPT
   {
-    return Associator<Handler, DefaultCandidate>::get(h.handler_, c);
+    return associated_allocator<Handler, Allocator>::get(h.handler_, a);
+  }
+};
+
+template <typename Handler, typename T, typename Executor>
+struct associated_executor<detail::coro_handler<Handler, T>, Executor>
+  : detail::associated_executor_forwarding_base<Handler, Executor>
+{
+  typedef typename associated_executor<Handler, Executor>::type type;
+
+  static type get(const detail::coro_handler<Handler, T>& h,
+      const Executor& ex = Executor()) ASIO_NOEXCEPT
+  {
+    return associated_executor<Handler, Executor>::get(h.handler_, ex);
   }
 };
 
@@ -344,7 +354,7 @@ namespace detail {
 
       (data->function_)(yield);
       if (data->call_handler_)
-        ASIO_MOVE_OR_LVALUE(Handler)(data->handler_)();
+        (data->handler_)();
     }
 
     shared_ptr<spawn_data<Handler, Function> > data_;

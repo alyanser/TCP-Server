@@ -53,8 +53,7 @@ public:
         asio::prefer(ex,
           execution::blocking.possibly,
           execution::allocator(alloc)),
-        asio::detail::bind_handler(
-          ASIO_MOVE_CAST(CompletionHandler)(handler)));
+        ASIO_MOVE_CAST(CompletionHandler)(handler));
   }
 
   template <typename CompletionHandler>
@@ -75,8 +74,7 @@ public:
     typename associated_allocator<handler_t>::type alloc(
         (get_associated_allocator)(handler));
 
-    ex.dispatch(asio::detail::bind_handler(
-          ASIO_MOVE_CAST(CompletionHandler)(handler)), alloc);
+    ex.dispatch(ASIO_MOVE_CAST(CompletionHandler)(handler), alloc);
   }
 };
 
@@ -119,8 +117,7 @@ public:
         asio::prefer(ex_,
           execution::blocking.possibly,
           execution::allocator(alloc)),
-        asio::detail::bind_handler(
-          ASIO_MOVE_CAST(CompletionHandler)(handler)));
+        ASIO_MOVE_CAST(CompletionHandler)(handler));
   }
 
   template <typename CompletionHandler>
@@ -173,8 +170,7 @@ public:
     typename associated_allocator<handler_t>::type alloc(
         (get_associated_allocator)(handler));
 
-    ex_.dispatch(asio::detail::bind_handler(
-          ASIO_MOVE_CAST(CompletionHandler)(handler)), alloc);
+    ex_.dispatch(ASIO_MOVE_CAST(CompletionHandler)(handler), alloc);
   }
 
   template <typename CompletionHandler>

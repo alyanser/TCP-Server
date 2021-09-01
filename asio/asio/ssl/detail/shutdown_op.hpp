@@ -51,11 +51,11 @@ public:
       // The engine only generates an eof when the shutdown notification has
       // been received from the peer. This indicates that the shutdown has
       // completed successfully, and thus need not be passed on to the handler.
-      ASIO_MOVE_OR_LVALUE(Handler)(handler)(asio::error_code());
+      handler(asio::error_code());
     }
     else
     {
-      ASIO_MOVE_OR_LVALUE(Handler)(handler)(ec);
+      handler(ec);
     }
   }
 };

@@ -10,8 +10,8 @@
 #include <asio/placeholders.hpp>
 
 tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port)
-         : m_ssl_context(asio::ssl::context::sslv23), m_resolver(m_io_context), m_executor_guard(m_io_context.get_executor()),
-         m_logger(m_mutex), m_acceptor(m_io_context), m_listen_port(listen_port)
+         : m_ssl_context(asio::ssl::context::sslv23), m_executor_guard(asio::make_work_guard(m_io_context)),
+         m_logger(m_mutex), m_acceptor(m_io_context), m_listen_port(listen_port), m_server_running(true)
 {
          auto worker_thread = [this](){
                   while(m_server_running){
@@ -44,10 +44,12 @@ tcp_server::~tcp_server(){
 }
 
 void tcp_server::shutdown() noexcept {
+         if(!m_server_running) return;
+
          m_server_running = false;
 
-         m_executor_guard.reset();
-         m_acceptor.cancel();
+         m_executor_guard.reset(); // let go of the threads waiting in woerkthread lambda
+         m_acceptor.cancel(); // cancel any pending operations
          m_io_context.stop();
 
          m_logger.server_log("status changed to non-listening state");
@@ -69,11 +71,12 @@ void tcp_server::configure_acceptor(){
 }
 
 void tcp_server::configure_ssl_context(){
-         // m_ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::verify_none);
-         m_ssl_context.set_options(asio::ssl::context::verify_none);
+         m_ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::verify_peer);
          m_ssl_context.set_default_verify_paths();
+         //TODO set verification files
 }
 
+// timeout for the acceptor - prevents further connections for TIMEOUT_SECONDS
 void tcp_server::connection_timeout(){
          m_acceptor.cancel();
          m_logger.server_log("status changed to non-listening state");
@@ -92,6 +95,7 @@ void tcp_server::connection_timeout(){
          });
 }
 
+// called when a new client attempts to connect
 void tcp_server::listen(){
          m_acceptor.listen();
          m_logger.server_log("status changed to listening state");
@@ -154,5 +158,6 @@ uint64_t tcp_server::get_spare_id() const noexcept {
          do{
                   unique_id = id_range(generator);
          }while(m_active_client_ids.count(unique_id));
+
          return unique_id;
 }

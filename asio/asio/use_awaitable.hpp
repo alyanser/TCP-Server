@@ -99,14 +99,17 @@ struct use_awaitable_t
     typedef use_awaitable_t default_completion_token_type;
 
     /// Construct the adapted executor from the inner executor type.
-    template <typename InnerExecutor1>
-    executor_with_default(const InnerExecutor1& ex,
+    executor_with_default(const InnerExecutor& ex) ASIO_NOEXCEPT
+      : InnerExecutor(ex)
+    {
+    }
+
+    /// Convert the specified executor to the inner executor type, then use
+    /// that to construct the adapted executor.
+    template <typename OtherExecutor>
+    executor_with_default(const OtherExecutor& ex,
         typename constraint<
-          conditional<
-            !is_same<InnerExecutor1, executor_with_default>::value,
-            is_convertible<InnerExecutor1, InnerExecutor>,
-            false_type
-          >::type::value
+          is_convertible<OtherExecutor, InnerExecutor>::value
         >::type = 0) ASIO_NOEXCEPT
       : InnerExecutor(ex)
     {

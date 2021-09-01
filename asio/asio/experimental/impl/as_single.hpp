@@ -19,7 +19,8 @@
 
 #include <tuple>
 
-#include "asio/associator.hpp"
+#include "asio/associated_executor.hpp"
+#include "asio/associated_allocator.hpp"
 #include "asio/async_result.hpp"
 #include "asio/detail/handler_alloc_helpers.hpp"
 #include "asio/detail/handler_cont_helpers.hpp"
@@ -54,21 +55,19 @@ public:
 
   void operator()()
   {
-    ASIO_MOVE_OR_LVALUE(Handler)(handler_)();
+    handler_();
   }
 
   template <typename Arg>
   void operator()(ASIO_MOVE_ARG(Arg) arg)
   {
-    ASIO_MOVE_OR_LVALUE(Handler)(handler_)(
-        ASIO_MOVE_CAST(Arg)(arg));
+    handler_(ASIO_MOVE_CAST(Arg)(arg));
   }
 
   template <typename... Args>
   void operator()(ASIO_MOVE_ARG(Args)... args)
   {
-    ASIO_MOVE_OR_LVALUE(Handler)(handler_)(
-        std::make_tuple(ASIO_MOVE_CAST(Args)(args)...));
+    handler_(std::make_tuple(ASIO_MOVE_CAST(Args)(args)...));
   }
 
 //private:
@@ -206,17 +205,32 @@ struct async_result<experimental::as_single_t<CompletionToken>, Signature>
   }
 };
 
-template <template <typename, typename> class Associator,
-    typename Handler, typename DefaultCandidate>
-struct associator<Associator,
-    experimental::detail::as_single_handler<Handler>, DefaultCandidate>
-  : Associator<Handler, DefaultCandidate>
+template <typename Handler, typename Executor>
+struct associated_executor<
+    experimental::detail::as_single_handler<Handler>, Executor>
+  : detail::associated_executor_forwarding_base<Handler, Executor>
 {
-  static typename Associator<Handler, DefaultCandidate>::type get(
+  typedef typename associated_executor<Handler, Executor>::type type;
+
+  static type get(
       const experimental::detail::as_single_handler<Handler>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
+      const Executor& ex = Executor()) ASIO_NOEXCEPT
   {
-    return Associator<Handler, DefaultCandidate>::get(h.handler_, c);
+    return associated_executor<Handler, Executor>::get(h.handler_, ex);
+  }
+};
+
+template <typename Handler, typename Allocator>
+struct associated_allocator<
+    experimental::detail::as_single_handler<Handler>, Allocator>
+{
+  typedef typename associated_allocator<Handler, Allocator>::type type;
+
+  static type get(
+      const experimental::detail::as_single_handler<Handler>& h,
+      const Allocator& a = Allocator()) ASIO_NOEXCEPT
+  {
+    return associated_allocator<Handler, Allocator>::get(h.handler_, a);
   }
 };
 

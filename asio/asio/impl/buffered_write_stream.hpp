@@ -15,7 +15,8 @@
 # pragma once
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
-#include "asio/associator.hpp"
+#include "asio/associated_allocator.hpp"
+#include "asio/associated_executor.hpp"
 #include "asio/detail/handler_alloc_helpers.hpp"
 #include "asio/detail/handler_cont_helpers.hpp"
 #include "asio/detail/handler_invoke_helpers.hpp"
@@ -76,7 +77,7 @@ namespace detail
         const std::size_t bytes_written)
     {
       storage_.consume(bytes_written);
-      ASIO_MOVE_OR_LVALUE(WriteHandler)(handler_)(ec, bytes_written);
+      handler_(ec, bytes_written);
     }
 
   //private:
@@ -181,18 +182,30 @@ namespace detail
 
 #if !defined(GENERATING_DOCUMENTATION)
 
-template <template <typename, typename> class Associator,
-    typename WriteHandler, typename DefaultCandidate>
-struct associator<Associator,
-    detail::buffered_flush_handler<WriteHandler>,
-    DefaultCandidate>
-  : Associator<WriteHandler, DefaultCandidate>
+template <typename WriteHandler, typename Allocator>
+struct associated_allocator<
+    detail::buffered_flush_handler<WriteHandler>, Allocator>
 {
-  static typename Associator<WriteHandler, DefaultCandidate>::type get(
-      const detail::buffered_flush_handler<WriteHandler>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
+  typedef typename associated_allocator<WriteHandler, Allocator>::type type;
+
+  static type get(const detail::buffered_flush_handler<WriteHandler>& h,
+      const Allocator& a = Allocator()) ASIO_NOEXCEPT
   {
-    return Associator<WriteHandler, DefaultCandidate>::get(h.handler_, c);
+    return associated_allocator<WriteHandler, Allocator>::get(h.handler_, a);
+  }
+};
+
+template <typename WriteHandler, typename Executor>
+struct associated_executor<
+    detail::buffered_flush_handler<WriteHandler>, Executor>
+  : detail::associated_executor_forwarding_base<WriteHandler, Executor>
+{
+  typedef typename associated_executor<WriteHandler, Executor>::type type;
+
+  static type get(const detail::buffered_flush_handler<WriteHandler>& h,
+      const Executor& ex = Executor()) ASIO_NOEXCEPT
+  {
+    return associated_executor<WriteHandler, Executor>::get(h.handler_, ex);
   }
 };
 
@@ -280,7 +293,7 @@ namespace detail
       if (ec)
       {
         const std::size_t length = 0;
-        ASIO_MOVE_OR_LVALUE(WriteHandler)(handler_)(ec, length);
+        handler_(ec, length);
       }
       else
       {
@@ -293,7 +306,7 @@ namespace detail
         storage_.resize(orig_size + length);
         const std::size_t bytes_copied = asio::buffer_copy(
             storage_.data() + orig_size, buffers_, length);
-        ASIO_MOVE_OR_LVALUE(WriteHandler)(handler_)(ec, bytes_copied);
+        handler_(ec, bytes_copied);
       }
     }
 
@@ -421,20 +434,38 @@ namespace detail
 
 #if !defined(GENERATING_DOCUMENTATION)
 
-template <template <typename, typename> class Associator,
-    typename ConstBufferSequence, typename WriteHandler,
-    typename DefaultCandidate>
-struct associator<Associator,
+template <typename ConstBufferSequence,
+    typename WriteHandler, typename Allocator>
+struct associated_allocator<
     detail::buffered_write_some_handler<ConstBufferSequence, WriteHandler>,
-    DefaultCandidate>
-  : Associator<WriteHandler, DefaultCandidate>
+    Allocator>
 {
-  static typename Associator<WriteHandler, DefaultCandidate>::type get(
+  typedef typename associated_allocator<WriteHandler, Allocator>::type type;
+
+  static type get(
       const detail::buffered_write_some_handler<
         ConstBufferSequence, WriteHandler>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
+      const Allocator& a = Allocator()) ASIO_NOEXCEPT
   {
-    return Associator<WriteHandler, DefaultCandidate>::get(h.handler_, c);
+    return associated_allocator<WriteHandler, Allocator>::get(h.handler_, a);
+  }
+};
+
+template <typename ConstBufferSequence,
+    typename WriteHandler, typename Executor>
+struct associated_executor<
+    detail::buffered_write_some_handler<ConstBufferSequence, WriteHandler>,
+    Executor>
+  : detail::associated_executor_forwarding_base<WriteHandler, Executor>
+{
+  typedef typename associated_executor<WriteHandler, Executor>::type type;
+
+  static type get(
+      const detail::buffered_write_some_handler<
+        ConstBufferSequence, WriteHandler>& h,
+      const Executor& ex = Executor()) ASIO_NOEXCEPT
+  {
+    return associated_executor<WriteHandler, Executor>::get(h.handler_, ex);
   }
 };
 

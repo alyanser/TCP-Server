@@ -6,13 +6,16 @@ set(CMAKE_CXX_COMPILER "clang++-12")
 set(CMAKE_CXX_STANDARD "17")
 set(CMAKE_CXX_STANDARD_REQUIRED true)
 
-set(CMAKE_CXX_FLAGS_DEBUG "-ggdb3 -fsanitize=address -fsanitize=undefined -Wall -Wshadow -Wold-style-cast -Wstrict-aliasing -Wdouble-promotion -Wundef -Wnull-dereference -Wfloat-equal -Wconversion -Woverflow -pedantic -Wextra -Wno-unused-parameter -Wfatal-errors")
+set(DEBUG_FLAGS "-ggdb3 -Wall -Wshadow -Wold-style-cast -Wstrict-aliasing -Wdouble-promotion -Wundef -Wnull-dereference -Wfloat-equal -Wconversion -Woverflow -pedantic -Wextra -Wno-unused-parameter -Wfatal-errors")
+
+set(DEBUG_FLAGS_WITH_SANITIZER "-fsanitize=address -fsanitisze=undefined -ggdb3 -Wall -Wshadow -Wold-style-cast -Wstrict-aliasing -Wdouble-promotion -Wundef -Wnull-dereference -Wfloat-equal -Wconversion -Woverflow -pedantic -Wextra -Wno-unused-parameter -Wfatal-errors")
+
+set(CMAKE_CXX_FLAGS_DEBUG ${DEBUG_FLAGS})
 
 add_definitions(-DASIO_STANDALONE)
 
 add_executable(${PROJECT_NAME} 
          src/main.cxx 
-         src/dns_resolver.cxx
          src/tcp_server.cxx
 )
 
@@ -25,7 +28,6 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 include_directories(
-         "asio" 
-         "include" 
-         ${OPENSSL_INCLUDE_DIR}
+         SYSTEM "asio"
+         "include"
 )

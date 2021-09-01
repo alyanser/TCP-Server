@@ -12,7 +12,6 @@
 #include <asio/ssl.hpp>
 #include <asio/io_context.hpp>
 #include <asio/strand.hpp>
-#include <dns_resolver.hpp>
 #include <asio/executor_work_guard.hpp>
 
 class tcp_server {
@@ -27,9 +26,9 @@ public:
          tcp_server & operator = (const tcp_server & rhs) = delete;
          tcp_server & operator = (tcp_server && rhs) = delete;
          ~tcp_server();
+         void shutdown() noexcept;
 private: 
          void listen();
-         void shutdown() noexcept;
          void connection_timeout();
          void configure_ssl_context();
          void configure_acceptor();
@@ -39,12 +38,11 @@ private:
          asio::io_context m_io_context;
          asio::ssl::context m_ssl_context;
          asio::executor_work_guard<asio::io_context::executor_type> m_executor_guard;
-         dns_resolver m_resolver;
          safe_logger m_logger;
          asio::ip::tcp::acceptor m_acceptor;
          const uint16_t m_listen_port;
          mutable std::mutex m_mutex;
-         std::atomic<bool> m_server_running = true;
+         std::atomic<bool> m_server_running;
          std::vector<std::thread> m_thread_pool;
          std::set<uint64_t> m_active_client_ids;
          uint32_t m_active_connections = 0;

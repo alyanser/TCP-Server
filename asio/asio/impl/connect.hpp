@@ -16,8 +16,8 @@
 #endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
 
 #include <algorithm>
-#include "asio/associator.hpp"
-#include "asio/detail/base_from_cancellation_state.hpp"
+#include "asio/associated_allocator.hpp"
+#include "asio/associated_executor.hpp"
 #include "asio/detail/bind_handler.hpp"
 #include "asio/detail/handler_alloc_helpers.hpp"
 #include "asio/detail/handler_cont_helpers.hpp"
@@ -294,18 +294,14 @@ namespace detail
 
   template <typename Protocol, typename Executor, typename EndpointSequence,
       typename ConnectCondition, typename RangeConnectHandler>
-  class range_connect_op
-    : public base_from_cancellation_state<RangeConnectHandler>,
-      base_from_connect_condition<ConnectCondition>
+  class range_connect_op : base_from_connect_condition<ConnectCondition>
   {
   public:
     range_connect_op(basic_socket<Protocol, Executor>& sock,
         const EndpointSequence& endpoints,
         const ConnectCondition& connect_condition,
         RangeConnectHandler& handler)
-      : base_from_cancellation_state<RangeConnectHandler>(
-          handler, enable_partial_cancellation()),
-        base_from_connect_condition<ConnectCondition>(connect_condition),
+      : base_from_connect_condition<ConnectCondition>(connect_condition),
         socket_(sock),
         endpoints_(endpoints),
         index_(0),
@@ -316,8 +312,7 @@ namespace detail
 
 #if defined(ASIO_HAS_MOVE)
     range_connect_op(const range_connect_op& other)
-      : base_from_cancellation_state<RangeConnectHandler>(other),
-        base_from_connect_condition<ConnectCondition>(other),
+      : base_from_connect_condition<ConnectCondition>(other),
         socket_(other.socket_),
         endpoints_(other.endpoints_),
         index_(other.index_),
@@ -327,10 +322,7 @@ namespace detail
     }
 
     range_connect_op(range_connect_op&& other)
-      : base_from_cancellation_state<RangeConnectHandler>(
-          ASIO_MOVE_CAST(base_from_cancellation_state<
-            RangeConnectHandler>)(other)),
-        base_from_connect_condition<ConnectCondition>(other),
+      : base_from_connect_condition<ConnectCondition>(other),
         socket_(other.socket_),
         endpoints_(other.endpoints_),
         index_(other.index_),
@@ -396,18 +388,11 @@ namespace detail
           if (!ec)
             break;
 
-          if (this->cancelled() != cancellation_type::none)
-          {
-            ec = asio::error::operation_aborted;
-            break;
-          }
-
           ++iter;
           ++index_;
         }
 
-        ASIO_MOVE_OR_LVALUE(RangeConnectHandler)(handler_)(
-            static_cast<const asio::error_code&>(ec),
+        handler_(static_cast<const asio::error_code&>(ec),
             static_cast<const typename Protocol::endpoint&>(
               ec || iter == end ? typename Protocol::endpoint() : *iter));
       }
@@ -530,18 +515,14 @@ namespace detail
 
   template <typename Protocol, typename Executor, typename Iterator,
       typename ConnectCondition, typename IteratorConnectHandler>
-  class iterator_connect_op
-    : public base_from_cancellation_state<IteratorConnectHandler>,
-      base_from_connect_condition<ConnectCondition>
+  class iterator_connect_op : base_from_connect_condition<ConnectCondition>
   {
   public:
     iterator_connect_op(basic_socket<Protocol, Executor>& sock,
         const Iterator& begin, const Iterator& end,
         const ConnectCondition& connect_condition,
         IteratorConnectHandler& handler)
-      : base_from_cancellation_state<IteratorConnectHandler>(
-          handler, enable_partial_cancellation()),
-        base_from_connect_condition<ConnectCondition>(connect_condition),
+      : base_from_connect_condition<ConnectCondition>(connect_condition),
         socket_(sock),
         iter_(begin),
         end_(end),
@@ -552,8 +533,7 @@ namespace detail
 
 #if defined(ASIO_HAS_MOVE)
     iterator_connect_op(const iterator_connect_op& other)
-      : base_from_cancellation_state<IteratorConnectHandler>(other),
-        base_from_connect_condition<ConnectCondition>(other),
+      : base_from_connect_condition<ConnectCondition>(other),
         socket_(other.socket_),
         iter_(other.iter_),
         end_(other.end_),
@@ -563,10 +543,7 @@ namespace detail
     }
 
     iterator_connect_op(iterator_connect_op&& other)
-      : base_from_cancellation_state<IteratorConnectHandler>(
-          ASIO_MOVE_CAST(base_from_cancellation_state<
-            IteratorConnectHandler>)(other)),
-        base_from_connect_condition<ConnectCondition>(other),
+      : base_from_connect_condition<ConnectCondition>(other),
         socket_(other.socket_),
         iter_(other.iter_),
         end_(other.end_),
@@ -618,17 +595,10 @@ namespace detail
           if (!ec)
             break;
 
-          if (this->cancelled() != cancellation_type::none)
-          {
-            ec = asio::error::operation_aborted;
-            break;
-          }
-
           ++iter_;
         }
 
-        ASIO_MOVE_OR_LVALUE(IteratorConnectHandler)(handler_)(
-            static_cast<const asio::error_code&>(ec),
+        handler_(static_cast<const asio::error_code&>(ec),
             static_cast<const Iterator&>(iter_));
       }
     }
@@ -753,44 +723,86 @@ namespace detail
 
 #if !defined(GENERATING_DOCUMENTATION)
 
-template <template <typename, typename> class Associator,
-    typename Protocol, typename Executor, typename EndpointSequence,
-    typename ConnectCondition, typename RangeConnectHandler,
-    typename DefaultCandidate>
-struct associator<Associator,
-    detail::range_connect_op<Protocol, Executor,
-      EndpointSequence, ConnectCondition, RangeConnectHandler>,
-    DefaultCandidate>
-  : Associator<RangeConnectHandler, DefaultCandidate>
+template <typename Protocol, typename Executor, typename EndpointSequence,
+    typename ConnectCondition, typename RangeConnectHandler, typename Allocator>
+struct associated_allocator<
+    detail::range_connect_op<Protocol, Executor, EndpointSequence,
+      ConnectCondition, RangeConnectHandler>, Allocator>
 {
-  static typename Associator<RangeConnectHandler, DefaultCandidate>::type get(
-      const detail::range_connect_op<Protocol, Executor,
-        EndpointSequence, ConnectCondition, RangeConnectHandler>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
+  typedef typename associated_allocator<
+      RangeConnectHandler, Allocator>::type type;
+
+  static type get(
+      const detail::range_connect_op<Protocol, Executor, EndpointSequence,
+        ConnectCondition, RangeConnectHandler>& h,
+      const Allocator& a = Allocator()) ASIO_NOEXCEPT
   {
-    return Associator<RangeConnectHandler, DefaultCandidate>::get(
-        h.handler_, c);
+    return associated_allocator<RangeConnectHandler,
+        Allocator>::get(h.handler_, a);
   }
 };
 
-template <template <typename, typename> class Associator,
-    typename Protocol, typename Executor, typename Iterator,
+template <typename Protocol, typename Executor, typename EndpointSequence,
+    typename ConnectCondition, typename RangeConnectHandler, typename Executor1>
+struct associated_executor<
+    detail::range_connect_op<Protocol, Executor, EndpointSequence,
+      ConnectCondition, RangeConnectHandler>, Executor1>
+  : detail::associated_executor_forwarding_base<RangeConnectHandler, Executor1>
+{
+  typedef typename associated_executor<
+      RangeConnectHandler, Executor1>::type type;
+
+  static type get(
+      const detail::range_connect_op<Protocol, Executor, EndpointSequence,
+      ConnectCondition, RangeConnectHandler>& h,
+      const Executor1& ex = Executor1()) ASIO_NOEXCEPT
+  {
+    return associated_executor<RangeConnectHandler,
+        Executor1>::get(h.handler_, ex);
+  }
+};
+
+template <typename Protocol, typename Executor, typename Iterator,
     typename ConnectCondition, typename IteratorConnectHandler,
-    typename DefaultCandidate>
-struct associator<Associator,
+    typename Allocator>
+struct associated_allocator<
     detail::iterator_connect_op<Protocol, Executor,
       Iterator, ConnectCondition, IteratorConnectHandler>,
-    DefaultCandidate>
-  : Associator<IteratorConnectHandler, DefaultCandidate>
+    Allocator>
 {
-  static typename Associator<IteratorConnectHandler, DefaultCandidate>::type
-  get(
+  typedef typename associated_allocator<
+      IteratorConnectHandler, Allocator>::type type;
+
+  static type get(
       const detail::iterator_connect_op<Protocol, Executor,
         Iterator, ConnectCondition, IteratorConnectHandler>& h,
-      const DefaultCandidate& c = DefaultCandidate()) ASIO_NOEXCEPT
+      const Allocator& a = Allocator()) ASIO_NOEXCEPT
   {
-    return Associator<IteratorConnectHandler, DefaultCandidate>::get(
-        h.handler_, c);
+    return associated_allocator<IteratorConnectHandler,
+        Allocator>::get(h.handler_, a);
+  }
+};
+
+template <typename Protocol, typename Executor, typename Iterator,
+    typename ConnectCondition, typename IteratorConnectHandler,
+    typename Executor1>
+struct associated_executor<
+    detail::iterator_connect_op<Protocol, Executor,
+      Iterator, ConnectCondition, IteratorConnectHandler>,
+    Executor1>
+  : detail::associated_executor_forwarding_base<
+      IteratorConnectHandler, Executor1>
+{
+  typedef typename associated_executor<
+      IteratorConnectHandler, Executor1>::type type;
+
+  static type get(
+      const detail::iterator_connect_op<Protocol, Executor,
+        Iterator, ConnectCondition, IteratorConnectHandler>& h,
+      const Executor1& ex = Executor1()) ASIO_NOEXCEPT
+  {
+    return associated_executor<IteratorConnectHandler,
+        Executor1>::get(h.handler_, ex);
   }
 };
 

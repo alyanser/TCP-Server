@@ -2,7 +2,6 @@
 #include <functional>
 #include <chrono>
 #include <tcp_server.hpp>
-#include <safe_logger.hpp>
 
 int main(){
          enum { THREAD_COUNT = 4, LISTEN_PORT = 1234, SERVER_DURATION_SECONDS = 1000 };
