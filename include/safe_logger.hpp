@@ -1,5 +1,5 @@
-#ifndef LOGGER_HPP
-#define LOGGER_HPP
+#ifndef SAFE_LOGGER_HPP
+#define SAFE_LOGGER_HPP
 #pragma once
 
 #include <iostream>
@@ -13,25 +13,25 @@ public:
          void server_log(Args && ... args) const noexcept {
                   std::lock_guard guard(m_mutex);
                   std::cout << "[server] : ";
-                  ((std::cout << args),...) << '\n';
+                  ((std::cout << args << ' '),...) << '\n';
          }
 
          template<typename ... Args>
          void client_log(Args && ... args) const noexcept {
                   std::lock_guard guard(m_mutex);
                   std::cout << "[client] : ";
-                  ((std::cout << args),...) << '\n';
+                  ((std::cout << args << ' '),...) << '\n';
          }
 
          template<typename ... Args>
          void error_log(Args && ... args) const noexcept {
                   std::lock_guard guard(m_mutex);
-                  std::cerr << "[_error] : ";
-                  ((std::cerr << args),...) << '\n';
+                  std::cerr << "[error_] : ";
+                  ((std::cerr << args << ' '),...) << '\n';
          }
 
 private:
          std::mutex & m_mutex;
 };
 
-#endif
+#endif // SAFE_LOGGER_HPP

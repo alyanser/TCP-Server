@@ -20,7 +20,7 @@ class tcp_server {
 public:
          enum { MINIMUM_THREAD_COUNT = 1, MAX_CONNECTIONS = 100, TIMEOUT_SECONDS = 5 };
 
-         tcp_server(uint8_t thread_count,uint16_t listen_port);
+         tcp_server(uint8_t thread_count,uint16_t listen_port,const std::string & auth_dir);
          tcp_server(const tcp_server & rhs) = delete;
          tcp_server(tcp_server && rhs) = delete;
          tcp_server & operator = (const tcp_server & rhs) = delete;
@@ -43,13 +43,14 @@ private:
          safe_logger m_logger;
          asio::ip::tcp::acceptor m_acceptor;
          const uint16_t m_listen_port;
-         uint8_t m_thread_count;
+         const uint8_t m_thread_count;
+         std::string m_auth_dir;
+
          std::atomic_bool m_server_running = false;
          std::atomic_uint32_t m_active_connections = 0;
-
          mutable std::mutex m_mutex;
          std::vector<std::thread> m_thread_pool;
          std::set<uint64_t> m_active_client_ids;
 };
 
-#endif
+#endif // TCP_SERVER_HPP
