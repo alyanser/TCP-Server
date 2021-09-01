@@ -97,7 +97,7 @@ void tcp_server::connection_timeout() noexcept {
 
          timeout_timer->expires_from_now(std::chrono::seconds(TIMEOUT_SECONDS));
 
-         timeout_timer->async_wait([this,timeout_timer](const asio::error_code & error_code) noexcept {
+         timeout_timer->async_wait([this,timeout_timer](const auto & error_code) noexcept {
                   if(!error_code){
                            m_logger.server_log("connection timeout over. shifting to listening state");
                            asio::post(m_io_context,std::bind(&tcp_server::listen,this));
@@ -143,7 +143,7 @@ void tcp_server::listen() noexcept {
 
          auto ssl_socket = std::make_shared<ssl_tcp_socket>(m_io_context,m_ssl_context);
 
-         auto on_connection_attempt = [this,ssl_socket,client_id_task](const asio::error_code & error_code) noexcept {
+         auto on_connection_attempt = [this,ssl_socket,client_id_task](const auto & error_code) noexcept {
                   if(!error_code){
                            // client attempting to connect - get the id
                            auto new_client_id = client_id_task->get_future().get();
@@ -160,7 +160,7 @@ void tcp_server::listen() noexcept {
                            asio::post(m_io_context,std::bind(&tcp_server::listen,this));
                   }else{
                            m_logger.error_log(error_code,error_code.message());
-                           // don't have to shutdown socket
+                           // don't have to shutdown socket as it didn't connect
                   }
          };
 
@@ -170,7 +170,7 @@ void tcp_server::listen() noexcept {
 void tcp_server::process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::shared_ptr<std::string> message,const uint64_t client_id,
          const asio::error_code & connection_code) noexcept 
 {
-         auto on_write = [this,ssl_socket,client_id](const asio::error_code & error_code,const auto bytes_sent) noexcept {
+         auto on_write = [this,ssl_socket,client_id](const auto & error_code,const auto bytes_sent) noexcept {
                   if(!error_code){
                            // connection being closed with the client, flush the received messages and clear the message string for other clients
                            m_logger.server_log(bytes_sent,"bytes sent to client [",client_id,']');
@@ -212,22 +212,23 @@ void tcp_server::process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std:
 
 void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
 
-         auto on_read = [this,ssl_socket,client_id](std::shared_ptr<std::string> read_buffer,const asio::error_code & error_code) noexcept {
-                  asio::error_code connection_code; // default error_code = 0
+         auto on_read = [this,ssl_socket,client_id](auto read_buffer,const auto & error_code,const auto bytes_read) noexcept {
+                  asio::error_code connection_code;
 
                   switch(error_code.value()){
                            case asio::error::eof : {
                                     connection_code = asio::error::eof; 
                                     [[fallthrough]];
                            }
-                           case asio::error::no_permission /* stream truncated */: {
+                           case asio::error::no_permission /* stream truncated | connection abrupted */: {
                                     connection_code = asio::error::no_permission; 
                                     [[fallthrough]];
                            }
                            case 0 /* success */ : {
-                                    m_logger.server_log(connection_code,connection_code.message());
-                                    asio::post(m_io_context,std::bind(&tcp_server::process_message,this,ssl_socket,read_buffer,client_id,
-                                             connection_code));
+                                    if(bytes_read){ // post iff atleast a single byte was read, otherwise its a false positive
+                                             asio::post(m_io_context,std::bind(&tcp_server::process_message,this,ssl_socket,read_buffer,client_id,
+                                                      connection_code));
+                                    }
                                     break;
                            }
                            default : {
@@ -237,12 +238,14 @@ void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const u
                   }
          };
 
-         auto on_read_wait_over = [this,ssl_socket,client_id,on_read](const asio::error_code & error_code) noexcept {
+         auto on_read_wait_over = [this,ssl_socket,client_id,on_read](const auto & error_code) noexcept {
                   if(!error_code){
                            // ready to read
                            m_logger.server_log("message received from client [",client_id,']');
                            auto read_buffer = std::make_shared<std::string>(ssl_socket->lowest_layer().available(),'\0');
-                           asio::async_read(*ssl_socket,asio::buffer(*read_buffer),std::bind(on_read,read_buffer,std::placeholders::_1));
+                           using std::placeholders::_1;
+                           using std::placeholders::_2;
+                           asio::async_read(*ssl_socket,asio::buffer(*read_buffer),std::bind(on_read,read_buffer,_1,_2));
                   }else{
                            m_logger.error_log(error_code,error_code.message());
                            asio::post(m_io_context,std::bind(&tcp_server::shutdown_socket,this,ssl_socket,client_id));
@@ -254,7 +257,7 @@ void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const u
 
 void tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
          
-         auto on_handshake = [this,ssl_socket,client_id](const asio::error_code & error_code) noexcept {
+         auto on_handshake = [this,ssl_socket,client_id](const auto & error_code) noexcept {
                   if(!error_code){
                            m_logger.server_log("handshake successful with client [",client_id,']');
                            ++m_active_connections;
