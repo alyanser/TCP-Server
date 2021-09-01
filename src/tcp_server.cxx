@@ -1,15 +1,11 @@
-#include <iostream>
 #include <algorithm>
 #include <memory>
 #include <random>
 #include <future>
-#include <asio/ssl.hpp>
-#include <tcp_server.hpp>
 #include <asio/dispatch.hpp>
 #include <asio/steady_timer.hpp>
-#include <asio/placeholders.hpp>
 #include <asio/read.hpp>
-#include <memory>
+#include <tcp_server.hpp>
 
 tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port,const std::string & auth_dir)
          : m_ssl_context(asio::ssl::context::sslv23), m_executor_guard(asio::make_work_guard(m_io_context)),
