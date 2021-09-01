@@ -3,7 +3,7 @@
 #pragma once
 
 #include <vector>
-#include <mutex>
+#include <shared_mutex>
 #include <thread>
 #include <set>
 #include <map>
@@ -55,10 +55,10 @@ private:
          std::atomic_bool m_server_running = false;
          std::atomic_uint32_t m_active_connections = 0;
          std::vector<std::thread> m_thread_pool;
-         mutable std::mutex m_client_id_mutex;
          std::set<uint64_t> m_active_client_ids;
-         mutable std::mutex m_receive_map_guard;
          std::map<uint64_t,std::string> m_received_messages;
+         mutable std::shared_mutex m_client_id_mutex;
+         mutable std::shared_mutex m_received_messages_mutex;
 };
 
 #endif // TCP_SERVER_HPP
