@@ -14,9 +14,14 @@ public:
                   ((std::cout << args << ' '),...) << '\n';
          }
 
-         void client_log(const uint64_t client_id,const std::string & request) const noexcept {
+         void receive_log(const uint64_t client_id,const std::string & request) const noexcept {
                   std::lock_guard guard(p_print_mutex);
                   std::cout << "request from client [" << client_id << "]\n\t--- START REQUEST\n" << request << "\n\t--- END REQUEST ---\n";
+         }
+
+         void send_log(const uint64_t client_id,const std::string & request) const noexcept {
+                  std::lock_guard guard(p_print_mutex);
+                  std::cout << "response sent to client [" << client_id << "]\n\t--- START RESPONSE\n" << request << "\n\t--- END RESPONSE ---\n";
          }
 
          template<typename ... Args>

@@ -114,8 +114,13 @@ void tcp_server::shutdown_socket(std::shared_ptr<ssl_tcp_socket> ssl_socket,cons
                   m_active_client_ids.erase(client_id);
          }
 
-         ssl_socket->lowest_layer().shutdown(tcp_socket::shutdown_both); // shutdown read and write
-         ssl_socket->lowest_layer().close();
+         try{
+                  ssl_socket->lowest_layer().shutdown(tcp_socket::shutdown_both); // shutdown read and write
+                  ssl_socket->lowest_layer().close();
+         }catch(const std::system_error & error){
+                  m_logger.error_log(error.what());
+         }
+
          --m_active_connections;
          m_logger.server_log("connection closed with client [",client_id,']');
 }
@@ -162,47 +167,59 @@ void tcp_server::listen() noexcept {
          m_acceptor.async_accept(ssl_socket->lowest_layer(),on_connection_attempt);
 }
 
-void tcp_server::process_request(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::shared_ptr<std::string> request,const uint64_t client_id,
-         const bool eof) noexcept 
+void tcp_server::process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::shared_ptr<std::string> message,const uint64_t client_id,
+         const asio::error_code & connection_code) noexcept 
 {
-         m_logger.server_log("processing request from client [",client_id,']');
-         m_logger.client_log(client_id,*request);
-
-         auto on_write = [this,ssl_socket,client_id,request,eof](const asio::error_code & error_code,const auto bytes_written){
+         auto on_write = [this,ssl_socket,client_id](const asio::error_code & error_code,const auto bytes_written) noexcept {
                   if(!error_code){
-                           // successful write
-                           m_logger.server_log(bytes_written," bytes sent to client [",client_id,']');
-                           // if the last read included end of file then terminate the connection otherwise post for further reading
-                           if(eof){
-                                    asio::post(m_io_context,std::bind(&tcp_server::shutdown_socket,this,ssl_socket,client_id));
-                           }else{
-                                    asio::post(m_io_context,std::bind(&tcp_server::read_request,this,ssl_socket,client_id));
-                           }
+                           // connection being closed with the client, flush the received messages and clear the messages
+                           m_logger.server_log(bytes_written,"bytes sent to client [",client_id,']');
+                           auto & all_client_messages = m_received_messages[client_id];
+                           m_logger.send_log(client_id,all_client_messages);
+                           all_client_messages.clear();
                   }else{
                            m_logger.error_log(error_code,error_code.message());
-                           asio::post(m_io_context,std::bind(&tcp_server::shutdown_socket,this,ssl_socket,client_id));
                   }
+                  
+                  asio::post(m_io_context,std::bind(&tcp_server::shutdown_socket,this,ssl_socket,client_id));
          };
 
-         // echo the same request back
-         asio::async_write(*ssl_socket,asio::buffer(*request),on_write);
+         m_logger.server_log("processing new message from client [",client_id,']');
+         m_logger.receive_log(client_id,*message);
+
+         auto & previous_message = m_received_messages[client_id];
+         previous_message += std::move(*message);
+
+         // if connection ended of eof was spotted, then just flush the messages and shutdown socket
+         if(connection_code){
+                  asio::async_write(*ssl_socket,asio::buffer(previous_message),on_write);
+         }else{// post for further reading
+                  asio::post(m_io_context,std::bind(&tcp_server::read_message,this,ssl_socket,client_id));
+         }
 }
 
-void tcp_server::read_request(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
+void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
 
          auto on_read_wait_over = [this,ssl_socket,client_id](const asio::error_code & error_code) noexcept {
                   if(!error_code){
                            // ready to read
-                           m_logger.server_log("request received from client [",client_id,']');
-                           auto read_buffer = std::make_shared<std::string>(ssl_socket->lowest_layer().available(),NULL_BYTE);
+                           m_logger.server_log("message received from client [",client_id,']');
+                           auto read_buffer = std::make_shared<std::string>(ssl_socket->lowest_layer().available(),'\0');
 
                            auto on_read = [this,ssl_socket,read_buffer,client_id](const asio::error_code & error_code,auto /* bytes_read */) noexcept {
-                                    if(!error_code || error_code == asio::error::eof){
-                                             asio::post(m_io_context,std::bind(&tcp_server::process_request,this,ssl_socket,read_buffer,client_id,
-                                                      error_code == asio::error::eof));
-                                    }else{
-                                             m_logger.error_log(error_code,error_code.message());
-                                             asio::post(m_io_context,std::bind(&tcp_server::shutdown_socket,this,ssl_socket,client_id));
+                                    asio::error_code connection_code;
+                                    switch(error_code.value()){
+                                             case asio::error::eof : connection_code = asio::error::eof; [[fallthrough]];
+                                             case asio::error::no_permission : connection_code = asio::error::no_permission; [[fallthrough]];
+                                             case 0 /* success */ : {
+                                                      asio::post(m_io_context,std::bind(&tcp_server::process_message,this,ssl_socket,read_buffer,
+                                                               client_id,connection_code));
+                                                      break;
+                                             }
+                                             default : {
+                                                      m_logger.error_log(error_code,error_code.message());
+                                                      asio::post(m_io_context,std::bind(&tcp_server::shutdown_socket,this,ssl_socket,client_id));
+                                             }
                                     }
                            };
 
@@ -222,7 +239,7 @@ void tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,co
                   if(!error_code){
                            m_logger.server_log("handshake successful with client [",client_id,']');
                            ++m_active_connections;
-                           asio::post(m_io_context,std::bind(&tcp_server::read_request,this,ssl_socket,client_id));
+                           asio::post(m_io_context,std::bind(&tcp_server::read_message,this,ssl_socket,client_id));
                   }else{
                            m_logger.error_log(error_code,error_code.message());
                            asio::post(m_io_context,std::bind(&tcp_server::shutdown_socket,this,ssl_socket,client_id));

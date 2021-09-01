@@ -6,6 +6,7 @@
 #include <mutex>
 #include <thread>
 #include <set>
+#include <map>
 #include <atomic>
 #include <thread_safe_logger.hpp>
 #include <asio/ip/tcp.hpp>
@@ -18,7 +19,7 @@ class tcp_server {
          using tcp_socket = asio::ip::tcp::socket;
          using ssl_tcp_socket = asio::ssl::stream<tcp_socket>;
 public:
-         enum { NULL_BYTE, MINIMUM_THREAD_COUNT = 1, MAX_CONNECTIONS = 10, TIMEOUT_SECONDS = 5 };
+         enum { MINIMUM_THREAD_COUNT = 1, MAX_CONNECTIONS = 10, TIMEOUT_SECONDS = 5 };
 
          tcp_server(uint8_t thread_count,uint16_t listen_port,const std::string & auth_dir);
          tcp_server(const tcp_server & rhs) = delete;
@@ -37,9 +38,10 @@ private:
          uint64_t get_spare_id() const noexcept;
          void shutdown_socket(std::shared_ptr<ssl_tcp_socket> socket,const uint64_t client_id) noexcept;
          void attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,uint64_t client_id) noexcept;
-         void read_request(std::shared_ptr<ssl_tcp_socket> ssl_socket,uint64_t client_id) noexcept;
+         void read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,uint64_t client_id) noexcept;
          void respond(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::string response,uint64_t client_id) noexcept;
-         void process_request(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::shared_ptr<std::string> request,uint64_t client_id,bool eof) noexcept;
+         void process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::shared_ptr<std::string> request,uint64_t client_id,
+                  const asio::error_code & connection_code) noexcept;
 private:
          asio::io_context m_io_context;
          asio::ssl::context m_ssl_context;
@@ -55,6 +57,8 @@ private:
          std::vector<std::thread> m_thread_pool;
          mutable std::mutex m_client_id_mutex;
          std::set<uint64_t> m_active_client_ids;
+         mutable std::mutex m_receive_map_guard;
+         std::map<uint64_t,std::string> m_received_messages;
 };
 
 #endif // TCP_SERVER_HPP
