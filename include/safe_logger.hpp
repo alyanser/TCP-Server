@@ -12,21 +12,21 @@ public:
          template<typename ... Args>
          void server_log(Args && ... args) const noexcept {
                   std::lock_guard guard(m_mutex);
-                  std::cout << "server : ";
+                  std::cout << "[server] : ";
                   ((std::cout << args),...) << '\n';
          }
 
          template<typename ... Args>
          void client_log(Args && ... args) const noexcept {
                   std::lock_guard guard(m_mutex);
-                  std::cout << "client : ";
+                  std::cout << "[client] : ";
                   ((std::cout << args),...) << '\n';
          }
 
          template<typename ... Args>
          void error_log(Args && ... args) const noexcept {
                   std::lock_guard guard(m_mutex);
-                  std::cerr << "error : ";
+                  std::cerr << "[_error] : ";
                   ((std::cerr << args),...) << '\n';
          }
 

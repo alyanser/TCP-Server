@@ -11,45 +11,55 @@
 
 tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port)
          : m_ssl_context(asio::ssl::context::sslv23), m_executor_guard(asio::make_work_guard(m_io_context)),
-         m_logger(m_mutex), m_acceptor(m_io_context), m_listen_port(listen_port), m_server_running(true)
+         m_logger(m_mutex), m_acceptor(m_io_context), m_listen_port(listen_port),
+         m_thread_count(std::max(thread_count,static_cast<uint8_t>(MINIMUM_THREAD_COUNT)))
 {
-         auto worker_thread = [this](){
-                  while(m_server_running){
-                           try{
-                                    m_io_context.run();
-                                    break; // stop if thread gracefully ended
-                           }catch(const std::exception & exception){
-                                    m_logger.error_log(exception.what()," reason : context run core failure");
-                           }
-                  }
-         };
-
-         thread_count = std::max(thread_count,static_cast<uint8_t>(MINIMUM_THREAD_COUNT));
-
-         m_thread_pool.reserve(thread_count);
-
-         for(uint8_t i = 0;i < thread_count;i++){
-                  m_thread_pool.emplace_back(std::thread(worker_thread));
-         }
-
-         m_logger.server_log("started with ",static_cast<uint16_t>(thread_count)," threads");
-
-         configure_ssl_context();
-         configure_acceptor();
-         asio::post(m_io_context,std::bind(&tcp_server::listen,this));
 }
 
 tcp_server::~tcp_server(){
          shutdown();
 }
 
+void tcp_server::start() noexcept {
+         if(m_server_running) return;
+         m_server_running = true;
+
+         auto worker_thread = [this](){
+                  while(m_server_running){
+                           try{
+                                    m_io_context.run();
+                           }catch(const std::exception & exception){
+                                    m_logger.error_log(exception.what()," reason : context run core failure");
+                           }
+                  }
+         };
+
+         if(m_thread_pool.empty()){
+                  m_thread_pool.reserve(m_thread_count);
+
+                  for(uint8_t i = 0;i < m_thread_count;i++){
+                           m_thread_pool.emplace_back(std::thread(worker_thread));
+                  }
+         }else{
+                  // relaunch existing threads instead of creating new ones
+                  for(auto & thread : m_thread_pool){
+                           thread = std::thread(worker_thread);
+                  }
+         }
+
+         m_logger.server_log("started with ",static_cast<uint16_t>(m_thread_count)," threads");
+
+         configure_ssl_context();
+         configure_acceptor();
+         asio::post(m_io_context,std::bind(&tcp_server::listen,this));
+}
+
 void tcp_server::shutdown() noexcept {
          if(!m_server_running) return;
-
          m_server_running = false;
 
-         m_executor_guard.reset(); // let go of the threads waiting in woerkthread lambda
-         m_acceptor.cancel(); // cancel any pending operations
+         m_executor_guard.reset();
+         m_acceptor.cancel();
          m_io_context.stop();
 
          m_logger.server_log("status changed to non-listening state");
@@ -62,7 +72,7 @@ void tcp_server::shutdown() noexcept {
          m_logger.server_log("shutdown");
 }
 
-void tcp_server::configure_acceptor(){
+void tcp_server::configure_acceptor() noexcept {
          asio::ip::tcp::endpoint endpoint(asio::ip::address_v4::any(),m_listen_port);
          m_acceptor.open(endpoint.protocol());
          m_acceptor.set_option(asio::ip::tcp::socket::reuse_address(true));
@@ -70,14 +80,14 @@ void tcp_server::configure_acceptor(){
          m_logger.server_log("acceptor bound to port number ",m_listen_port);
 }
 
-void tcp_server::configure_ssl_context(){
+void tcp_server::configure_ssl_context() noexcept {
          m_ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::verify_peer);
          m_ssl_context.set_default_verify_paths();
          //TODO set verification files
 }
 
 // timeout for the acceptor - prevents further connections for TIMEOUT_SECONDS
-void tcp_server::connection_timeout(){
+void tcp_server::connection_timeout() noexcept {
          m_acceptor.cancel();
          m_logger.server_log("status changed to non-listening state");
 
@@ -96,11 +106,11 @@ void tcp_server::connection_timeout(){
 }
 
 // called when a new client attempts to connect
-void tcp_server::listen(){
+void tcp_server::listen() noexcept {
          m_acceptor.listen();
          m_logger.server_log("status changed to listening state");
 
-         if(m_active_connections == MAX_CONNECTIONS){
+         if(m_active_connections > MAX_CONNECTIONS){
                   m_logger.error_log("max connections reached. taking a connection timeout for ",TIMEOUT_SECONDS," seconds");
                   asio::post(m_io_context,std::bind(&tcp_server::connection_timeout,this));
                   return;
@@ -112,7 +122,6 @@ void tcp_server::listen(){
          asio::post(m_io_context,std::bind(&task_type::operator(),client_id_task));
 
          auto ssl_socket = std::make_shared<ssl_tcp_socket>(m_io_context,m_ssl_context);
-         ssl_socket->set_verify_mode(asio::ssl::verify_none);
 
          auto on_connection_attempt = [this,ssl_socket,client_id_task](const asio::error_code & error_code) noexcept {
                   if(!error_code){
@@ -121,7 +130,7 @@ void tcp_server::listen(){
                            m_active_client_ids.insert(new_client_id);
 
                            m_logger.server_log("new client [",new_client_id,"] attempting to connect. handshake pending");
-                           // forward client to different thread and wait for next client
+                           // forward client to different thread to perform handshake and wait for next client
                            asio::post(m_io_context,std::bind(&tcp_server::attempt_handshake,this,ssl_socket,new_client_id));
                            // post for the next client
                            asio::post(m_io_context,std::bind(&tcp_server::listen,this));
@@ -133,7 +142,7 @@ void tcp_server::listen(){
          m_acceptor.async_accept(ssl_socket->lowest_layer(),std::bind(on_connection_attempt,std::placeholders::_1));
 }
 
-void tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id){
+void tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
          
          auto on_handshake = [this,client_id,ssl_socket](const asio::error_code & error_code) noexcept {
                   if(!error_code){
@@ -154,7 +163,7 @@ uint64_t tcp_server::get_spare_id() const noexcept {
          static std::uniform_int_distribution<uint64_t> id_range(0,std::numeric_limits<uint64_t>::max());
 
          uint64_t unique_id;
-
+         
          do{
                   unique_id = id_range(generator);
          }while(m_active_client_ids.count(unique_id));
