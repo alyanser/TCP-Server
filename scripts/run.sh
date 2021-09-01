@@ -1,3 +1,3 @@
 #!/bin/bash
 
-[[ -d "build" ]] && cd build && [[ -x "tcpserver" ]] && ./tcpserver || echo executable not built/found
+[[ -d "../build" ]] && cd ../build && [[ -x "tcpserver" ]] && ./tcpserver || echo executable not built/found
