@@ -8,8 +8,7 @@
 #include <tcp_server.hpp>
 
 tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port,const std::string & auth_dir)
-         : m_ssl_context(asio::ssl::context::sslv23), m_executor_guard(asio::make_work_guard(m_io_context)),
-         m_acceptor(m_io_context), m_listen_port(listen_port), m_auth_dir(auth_dir),
+         : m_listen_port(listen_port), m_auth_dir(auth_dir),
          m_thread_count(std::max(thread_count,static_cast<uint8_t>(MINIMUM_THREAD_COUNT)))
 {
          if(!m_auth_dir.empty() && m_auth_dir.back() != '/') m_auth_dir += '/';

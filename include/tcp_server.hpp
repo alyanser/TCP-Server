@@ -43,17 +43,17 @@ private:
          void process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::shared_ptr<std::string> request,uint64_t client_id,
                   const asio::error_code & connection_code) noexcept;
 private:
-         asio::io_context m_io_context;
-         asio::ssl::context m_ssl_context;
-         asio::executor_work_guard<asio::io_context::executor_type> m_executor_guard;
-         asio::ip::tcp::acceptor m_acceptor;
          const uint16_t m_listen_port;
          std::string m_auth_dir;
          const uint8_t m_thread_count;
-         thread_safe_logger m_logger;
 
+         asio::io_context m_io_context;
+         asio::ssl::context m_ssl_context = asio::ssl::context(asio::ssl::context::tlsv12_server);
+         asio::executor_work_guard<asio::io_context::executor_type> m_executor_guard = asio::make_work_guard(m_io_context);
+         asio::ip::tcp::acceptor m_acceptor = asio::ip::tcp::acceptor(m_io_context);
          std::atomic_bool m_server_running = false;
          std::atomic_uint32_t m_active_connections = 0;
+         thread_safe_logger m_logger;
          std::vector<std::thread> m_thread_pool;
          std::set<uint64_t> m_active_client_ids;
          std::map<uint64_t,std::string> m_received_messages;
