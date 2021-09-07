@@ -2,7 +2,6 @@
 #define TCP_SERVER_HPP
 #pragma once
 
-#include <vector>
 #include <shared_mutex>
 #include <thread>
 #include <set>
@@ -14,6 +13,7 @@
 #include <asio/ssl/context.hpp>
 #include <asio/ssl/stream.hpp>
 #include <asio/io_context.hpp>
+#include <asio/thread_pool.hpp>
 #include <thread_safe_logger.hpp>
 
 class tcp_server {
@@ -52,7 +52,6 @@ private:
          std::atomic_bool m_server_running = false;
          std::atomic_uint32_t m_active_connections = 0;
          thread_safe_logger m_logger;
-         std::vector<std::thread> m_thread_pool;
          std::set<uint64_t> m_active_client_ids;
          std::map<uint64_t,std::string> m_received_messages;
          mutable std::shared_mutex m_client_id_mutex;
@@ -63,6 +62,7 @@ private:
          uint16_t m_listen_port;
          std::string_view m_auth_dir;
          uint8_t m_thread_count;
+         asio::thread_pool m_thread_pool;
 };
 
 inline tcp_server::~tcp_server(){

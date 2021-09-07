@@ -7,7 +7,7 @@
 
 tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port,const std::string_view auth_dir)
          : m_listen_port(listen_port), m_auth_dir(auth_dir),
-         m_thread_count(std::max(thread_count,static_cast<uint8_t>(MINIMUM_THREAD_COUNT)))
+         m_thread_count(std::max(thread_count,static_cast<uint8_t>(MINIMUM_THREAD_COUNT))), m_thread_pool(m_thread_count)
 {
 }
 
@@ -22,17 +22,8 @@ void tcp_server::start() noexcept {
                   }
          };
 
-         if(m_thread_pool.empty()){
-                  m_thread_pool.reserve(m_thread_count);
-
-                  for(uint8_t i = 0;i < m_thread_count;i++){
-                           m_thread_pool.emplace_back(std::thread(worker_thread));
-                  }
-         }else{
-                  for(auto & thread : m_thread_pool){
-                           assert(thread.joinable());
-                           thread = std::thread(worker_thread);
-                  }
+         for(uint8_t i = 0;i < m_thread_count;i++){
+                  asio::post(m_thread_pool,worker_thread);
          }
 
          m_logger.server_log("started with",static_cast<uint16_t>(m_thread_count),"threads");
@@ -54,13 +45,7 @@ void tcp_server::shutdown() noexcept {
          m_acceptor.cancel();
          m_acceptor.close(); 
          m_io_context.stop();
-
-         m_logger.server_log("deaf state");
-
-         for(auto & thread : m_thread_pool){
-                  assert(thread.joinable());
-                  thread.join();
-         }
+         m_thread_pool.join();
 
          m_logger.server_log("shutdown");
 }
