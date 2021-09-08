@@ -1,6 +1,6 @@
 #include <chrono>
 #include <string>
-#include <tcp_server.hpp>
+#include <tcp_server.hxx>
 
 int main(){
          enum { THREAD_COUNT = 3, LISTEN_PORT = 1234, SERVER_DURATION_SECONDS = 10000 };

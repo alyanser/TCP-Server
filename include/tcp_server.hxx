@@ -14,7 +14,7 @@
 #include <asio/ssl/stream.hpp>
 #include <asio/io_context.hpp>
 #include <asio/thread_pool.hpp>
-#include <thread_safe_logger.hpp>
+#include <thread_safe_logger.hxx>
 
 class tcp_server {
          using tcp_socket = asio::ip::tcp::socket;
