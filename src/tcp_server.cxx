@@ -76,7 +76,7 @@ void tcp_server::shutdown_socket(std::shared_ptr<ssl_tcp_socket> ssl_socket,cons
          }
 
          try{
-                  ssl_socket->lowest_layer().shutdown(tcp_socket::shutdown_both); // shutdown read and write
+                  ssl_socket->lowest_layer().shutdown(tcp_socket::shutdown_both);
                   ssl_socket->lowest_layer().close();
          }catch(const std::system_error & error){
                   m_logger.error_log(error.what());
@@ -105,7 +105,6 @@ void tcp_server::listen() noexcept {
 
          auto on_connection_attempt = [this,ssl_socket,client_id_task](const auto & error_code) noexcept {
                   if(!error_code){
-                           // client attempting to connect - get the id
                            auto new_client_id = client_id_task->get_future().get();
 
                            {
@@ -163,10 +162,10 @@ void tcp_server::process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std:
                   m_received_messages[client_id] = std::move(*message);
          }
 
-         // if connection ended or message ended with eof, then just flush the messages and shutdown socket
+         
          if(connection_code){
                   asio::async_write(*ssl_socket,asio::buffer(m_received_messages[client_id]),on_write);
-         }else{ // else post for further reading
+         }else{
                   asio::post(m_io_context,std::bind(&tcp_server::read_message,this,ssl_socket,client_id));
          }
 }
@@ -174,32 +173,18 @@ void tcp_server::process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std:
 void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
 
          auto on_read = [this,ssl_socket,client_id](auto read_buffer,const auto & error_code,const auto bytes_read) noexcept {
-                  asio::error_code connection_code;
+                  if(!error_code && bytes_read){
+                           asio::error_code connection_code;
 
-                  switch(error_code.value()){
-                           case asio::error::eof : {
-                                    connection_code = asio::error::eof; 
-                                    [[fallthrough]];
+                           if(error_code.value() == asio::error::eof || error_code.value() == asio::error::no_permission){
+                                    connection_code = asio::error::network_down;
                            }
 
-                           case asio::error::no_permission /* stream truncated | connection abrupted */: {
-                                    connection_code = asio::error::no_permission; 
-                                    [[fallthrough]];
-                           }
-
-                           case 0 /* success */ : {
-                                    if(bytes_read){ // post iff atleast a single byte was read, otherwise its a false positive
-                                             asio::post(m_io_context,std::bind(&tcp_server::process_message,this,ssl_socket,read_buffer,
-                                                      client_id,connection_code));
-                                    }
-
-                                    break;
-                           }
-
-                           default : {
-                                    m_logger.error_log(error_code,error_code.message());
-                                    asio::post(m_io_context,std::bind(&tcp_server::shutdown_socket,this,ssl_socket,client_id));
-                           }
+                           asio::post(m_io_context,std::bind(&tcp_server::process_message,this,ssl_socket,read_buffer,client_id,connection_code));
+                           return;
+                  }else{
+                           m_logger.error_log(error_code,error_code.message());
+                           asio::post(m_io_context,std::bind(&tcp_server::shutdown_socket,this,ssl_socket,client_id));
                   }
          };
 

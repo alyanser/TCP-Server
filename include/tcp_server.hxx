@@ -43,8 +43,8 @@ private:
          void respond(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::string response,uint64_t client_id) noexcept;
          void process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::shared_ptr<std::string> request,uint64_t client_id,
                   const asio::error_code & connection_code) noexcept;
+                  
 ///
-private:
          asio::io_context m_io_context;
          asio::ssl::context m_ssl_context = asio::ssl::context(asio::ssl::context::tlsv12_server);
          asio::executor_work_guard<asio::io_context::executor_type> m_executor_guard = asio::make_work_guard(m_io_context);
