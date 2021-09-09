@@ -217,3 +217,14 @@ void tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,co
          m_logger.server_log("handshake attempt with client [",client_id,']');
          ssl_socket->async_handshake(asio::ssl::stream_base::handshake_type::server,on_handshake);
 }
+
+uint64_t tcp_server::get_spare_id() const noexcept {
+         uint64_t unique_id;
+         std::shared_lock client_id_guard(m_client_id_mutex);
+         
+         do{
+                  unique_id = id_range(generator);
+         }while(m_active_client_ids.count(unique_id));
+
+         return unique_id;
+}
