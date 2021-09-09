@@ -1,26 +1,25 @@
-#ifndef TCP_SERVER_HPP
-#define TCP_SERVER_HPP
+#ifndef TCP_SERVER_HXX
+#define TCP_SERVER_HXX
 #pragma once
 
-#include <shared_mutex>
 #include <thread>
 #include <set>
 #include <map>
 #include <atomic>
 #include <random>
+#include <shared_mutex>
 #include <asio/ip/tcp.hpp>
-#include <asio/executor_work_guard.hpp>
 #include <asio/ssl/context.hpp>
 #include <asio/ssl/stream.hpp>
 #include <asio/io_context.hpp>
 #include <asio/thread_pool.hpp>
+#include <asio/executor_work_guard.hpp>
 #include <thread_safe_logger.hxx>
 
 class tcp_server {
+public:
          using tcp_socket = asio::ip::tcp::socket;
          using ssl_tcp_socket = asio::ssl::stream<tcp_socket>;
-public:
-         enum { MINIMUM_THREAD_COUNT = 1, MAX_CONNECTIONS = 10, TIMEOUT_SECONDS = 5, MAX_ID = std::numeric_limits<uint64_t>::max() };
 
          tcp_server(uint8_t thread_count,uint16_t listen_port,std::string_view auth_dir);
          tcp_server(const tcp_server & rhs) = delete;
@@ -45,6 +44,13 @@ private:
                   const asio::error_code & connection_code) noexcept;
                   
 ///
+         constexpr static uint8_t minimum_thread_count = 1;
+         constexpr static uint32_t max_connections = 100;
+         constexpr static uint32_t timeout_seconds = 5;
+         constexpr static uint64_t max_id = std::numeric_limits<uint64_t>::max();
+         inline static std::mt19937 generator = std::mt19937(std::random_device()());
+         inline static std::uniform_int_distribution id_range = std::uniform_int_distribution<uint64_t>(0,max_id);
+
          asio::io_context m_io_context;
          asio::ssl::context m_ssl_context = asio::ssl::context(asio::ssl::context::tlsv12_server);
          asio::executor_work_guard<asio::io_context::executor_type> m_executor_guard = asio::make_work_guard(m_io_context);
@@ -56,14 +62,18 @@ private:
          std::map<uint64_t,std::string> m_received_messages;
          mutable std::shared_mutex m_client_id_mutex;
          mutable std::shared_mutex m_received_messages_mutex;
-         inline static std::mt19937 m_generator = std::mt19937(std::random_device()());
-         inline static std::uniform_int_distribution m_id_range = std::uniform_int_distribution<uint64_t>(0,MAX_ID);
          
          uint16_t m_listen_port;
          std::string_view m_auth_dir;
          uint8_t m_thread_count;
          asio::thread_pool m_thread_pool;
 };
+
+inline tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port,const std::string_view auth_dir) : 
+         m_listen_port(listen_port), m_auth_dir(auth_dir),
+         m_thread_count(std::max(thread_count,m_thread_count)), m_thread_pool(m_thread_count)
+{
+}
 
 inline tcp_server::~tcp_server(){
          shutdown();
@@ -89,10 +99,10 @@ inline uint64_t tcp_server::get_spare_id() const noexcept {
          std::shared_lock client_id_guard(m_client_id_mutex);
          
          do{
-                  unique_id = m_id_range(m_generator);
+                  unique_id = id_range(generator);
          }while(m_active_client_ids.count(unique_id));
 
          return unique_id;
 }
 
-#endif // TCP_SERVER_HPP
+#endif // TCP_SERVER_HXX

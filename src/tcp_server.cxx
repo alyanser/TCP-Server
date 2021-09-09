@@ -5,12 +5,6 @@
 #include <asio/read.hpp>
 #include <tcp_server.hxx>
 
-tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port,const std::string_view auth_dir)
-         : m_listen_port(listen_port), m_auth_dir(auth_dir),
-         m_thread_count(std::max(thread_count,static_cast<uint8_t>(MINIMUM_THREAD_COUNT))), m_thread_pool(m_thread_count)
-{
-}
-
 void tcp_server::start() noexcept {
          if(m_server_running) return;
 
@@ -56,7 +50,7 @@ void tcp_server::connection_timeout() noexcept {
 
          auto timeout_timer = std::make_shared<asio::steady_timer>(m_io_context);
 
-         timeout_timer->expires_from_now(std::chrono::seconds(TIMEOUT_SECONDS));
+         timeout_timer->expires_from_now(std::chrono::seconds(timeout_seconds));
 
          timeout_timer->async_wait([this,timeout_timer](const auto & error_code) noexcept {
                   if(!error_code){
@@ -90,8 +84,8 @@ void tcp_server::listen() noexcept {
          m_acceptor.listen();
          m_logger.server_log("listening state");
 
-         if(m_active_connections > MAX_CONNECTIONS){
-                  m_logger.error_log("max connections reached. taking a connection timeout for",TIMEOUT_SECONDS,"seconds");
+         if(m_active_connections > max_connections){
+                  m_logger.error_log("max connections reached. taking a connection timeout for",timeout_seconds,"seconds");
                   asio::post(m_io_context,std::bind(&tcp_server::connection_timeout,this));
                   return;
          }
