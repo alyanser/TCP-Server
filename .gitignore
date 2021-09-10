@@ -3,3 +3,4 @@ certs
 .vscode
 compile_commands.json
 .cache
+.clang-tidy

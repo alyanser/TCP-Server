@@ -3,7 +3,7 @@
 #include "tcp_server.hxx"
 
 int main(){
-         constexpr uint8_t thread_count = 1;
+         constexpr uint8_t thread_count = 3;
          constexpr uint16_t listen_port = 1234;
          constexpr std::string_view auth_dir("../certs/");
 

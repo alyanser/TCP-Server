@@ -36,11 +36,11 @@ private:
          void connection_timeout() noexcept;
          void configure_ssl_context() noexcept;
          void configure_acceptor() noexcept;
-         void shutdown_socket(std::shared_ptr<ssl_tcp_socket> socket,const uint64_t client_id) noexcept;
+         void shutdown_socket(std::shared_ptr<ssl_tcp_socket> socket,uint64_t client_id) noexcept;
          void attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,uint64_t client_id) noexcept;
          void read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,uint64_t client_id) noexcept;
          void respond(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::string response,uint64_t client_id) noexcept;
-         void process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::shared_ptr<std::string> request,uint64_t client_id,
+         void process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::shared_ptr<std::string> message,uint64_t client_id,
                   const asio::error_code & connection_code) noexcept;
                   
 ///
@@ -71,7 +71,7 @@ private:
 
 inline tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port,const std::string_view auth_dir) noexcept :
          m_listen_port(listen_port), m_auth_dir(auth_dir),
-         m_thread_count(std::max(thread_count,m_thread_count)), m_thread_pool(m_thread_count)
+         m_thread_count(std::max(thread_count,minimum_thread_count)), m_thread_pool(m_thread_count)
 {
 }
 
