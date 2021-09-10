@@ -69,7 +69,7 @@ private:
          asio::thread_pool m_thread_pool;
 };
 
-inline tcp_server::tcp_server(uint8_t thread_count,const uint16_t listen_port,const std::string_view auth_dir) noexcept :
+inline tcp_server::tcp_server(const uint8_t thread_count,const uint16_t listen_port,const std::string_view auth_dir) noexcept :
          m_listen_port(listen_port), m_auth_dir(auth_dir),
          m_thread_count(std::max(thread_count,minimum_thread_count)), m_thread_pool(m_thread_count)
 {
