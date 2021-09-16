@@ -4,7 +4,7 @@
 #include <iostream>
 #include <mutex>
 
-class thread_safe_logger {
+class Server_logger {
 public:
          template<typename ... Args>
          void server_log(Args && ... args) const noexcept;
@@ -23,7 +23,7 @@ private:
 };
 
 template<typename ... Args>
-inline void thread_safe_logger::server_log(Args && ... args) const noexcept {
+inline void Server_logger::server_log(Args && ... args) const noexcept {
          std::lock_guard guard(m_print_mutex);
 
          std::cout << "[server] : ";
@@ -31,7 +31,7 @@ inline void thread_safe_logger::server_log(Args && ... args) const noexcept {
 }
 
 template<typename ... Args>
-inline void thread_safe_logger::error_log(Args && ... args) const noexcept {
+inline void Server_logger::error_log(Args && ... args) const noexcept {
          std::lock_guard guard(m_print_mutex);
 
          std::cerr << "[error_] : ";
@@ -39,7 +39,7 @@ inline void thread_safe_logger::error_log(Args && ... args) const noexcept {
 }
 
 template<typename Message>
-inline void thread_safe_logger::receive_log(const uint64_t client_id,Message && message) const noexcept {
+inline void Server_logger::receive_log(const uint64_t client_id,Message && message) const noexcept {
          std::lock_guard guard(m_print_mutex);
 
          std::cout << "\n*** message from client [" << client_id << "]\n\n\t--- START MESSAGE ---\n" << message
@@ -47,7 +47,7 @@ inline void thread_safe_logger::receive_log(const uint64_t client_id,Message && 
 }
 
 template<typename Message>
-inline void thread_safe_logger::send_log(const uint64_t client_id,Message && message) const noexcept {
+inline void Server_logger::send_log(const uint64_t client_id,Message && message) const noexcept {
          std::lock_guard guard(m_print_mutex);
          
          std::cout << "\n*** response sent to client [" << client_id << "]\n\n\t--- START RESPONSE ---\n" << message

@@ -1,19 +1,20 @@
+#include "tcp_server.hxx"
+
 #include <algorithm>
 #include <asio/error.hpp>
 #include <future>
 #include <asio/dispatch.hpp>
 #include <asio/steady_timer.hpp>
 #include <asio/read.hpp>
-#include "tcp_server.hxx"
 
-void tcp_server::start() noexcept {
+void Tcp_server::start() noexcept {
          if(m_server_running){
                   return;
          }
 
          m_server_running = true;
 
-         auto worker_thread = [&m_io_context = m_io_context,&m_server_running = m_server_running]() noexcept {
+         auto worker_thread = [&m_io_context = m_io_context,&m_server_running = m_server_running]{
 
                   while(m_server_running){
                            m_io_context.run();
@@ -28,29 +29,25 @@ void tcp_server::start() noexcept {
 
          configure_ssl_context();
          configure_acceptor();
-
          asio::post(m_io_context,[this]{ listen(); });
 }
 
-void tcp_server::shutdown() noexcept {
+void Tcp_server::shutdown() noexcept {
          if(!m_server_running){
                   return;
          }
          
          m_logger.server_log("shutting down");
-         
          m_server_running = false;
-
          m_executor_guard.reset();
-         m_acceptor.cancel();
+         m_acceptor.cancel(); //? required?
          m_acceptor.close(); 
          m_io_context.stop();
          m_thread_pool.join();
-
          m_logger.server_log("shutdown");
 }
 
-void tcp_server::connection_timeout() noexcept {
+void Tcp_server::connection_timeout() noexcept {
          m_acceptor.cancel();
          m_logger.server_log("deaf state");
 
@@ -58,7 +55,8 @@ void tcp_server::connection_timeout() noexcept {
 
          timeout_timer->expires_from_now(std::chrono::seconds(timeout_seconds));
 
-         timeout_timer->async_wait([this,timeout_timer](const auto & error_code) noexcept {
+         timeout_timer->async_wait([this,timeout_timer](const auto & error_code){
+
                   if(!error_code){
                            m_logger.server_log("connection timeout over. shifting to listening state");
                            asio::post(m_io_context,[this]{ listen(); });
@@ -68,7 +66,7 @@ void tcp_server::connection_timeout() noexcept {
          });
 }
 
-void tcp_server::shutdown_socket(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
+void Tcp_server::shutdown_socket(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
          {        
                   std::lock_guard client_id_guard(m_client_id_mutex);
                   assert(m_active_client_ids.count(client_id));
@@ -86,7 +84,7 @@ void tcp_server::shutdown_socket(std::shared_ptr<ssl_tcp_socket> ssl_socket,cons
          m_logger.server_log("connection closed with client [",client_id,']');
 }
 
-void tcp_server::listen() noexcept {
+void Tcp_server::listen() noexcept {
          m_acceptor.listen();
          m_logger.server_log("listening state");
 
@@ -103,7 +101,8 @@ void tcp_server::listen() noexcept {
 
          auto ssl_socket = std::make_shared<ssl_tcp_socket>(m_io_context,m_ssl_context);
 
-         auto on_connection_attempt = [this,ssl_socket,client_id_task](const auto & error_code) noexcept {
+         auto on_connection_attempt = [this,ssl_socket,client_id_task](const auto & error_code){
+
                   if(!error_code){
                            auto new_client_id = client_id_task->get_future().get();
 
@@ -113,7 +112,6 @@ void tcp_server::listen() noexcept {
                            }
 
                            m_logger.server_log("new client [",new_client_id,"] attempting to connect. handshake pending");
-                         
                            asio::post(m_io_context,[this,ssl_socket,new_client_id]{ attempt_handshake(ssl_socket,new_client_id); });
                            asio::post(m_io_context,[this]{ listen(); });
                   }else{
@@ -125,21 +123,22 @@ void tcp_server::listen() noexcept {
          m_acceptor.async_accept(ssl_socket->lowest_layer(),on_connection_attempt);
 }
 
-void tcp_server::process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::shared_ptr<std::string> message,const uint64_t client_id,
-         const asio::error_code & connection_code) noexcept
-{
-         const auto on_write = [this,ssl_socket,client_id](const auto & error_code,const auto bytes_sent) noexcept {
+void Tcp_server::process_message(const Network_message & message,const asio::error_code & connection_code) noexcept {
+
+         auto on_write = [this,ssl_socket = message.ssl_socket,client_id = message.client_id](const auto & error_code,const auto bytes_sent){
+
                   if(!error_code){
                            m_logger.server_log(bytes_sent,"bytes sent to client [",client_id,']');
+                           
                            {
                                     std::shared_lock received_messages_guard(m_received_messages_mutex);
 
-                                    auto & all_client_messages = m_received_messages[client_id];
+                                    const auto & all_client_messages = m_received_messages[client_id];
                                     assert(m_received_messages.count(client_id));
 
                                     received_messages_guard.unlock();
 
-                                    m_logger.send_log(client_id,std::move(all_client_messages));
+                                    m_logger.send_log(client_id,all_client_messages);
                            }
                   }else{
                            m_logger.error_log(error_code,error_code.message());
@@ -148,28 +147,32 @@ void tcp_server::process_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std:
                   asio::post(m_io_context,[this,ssl_socket,client_id]{ shutdown_socket(ssl_socket,client_id); });
          };
 
-         m_logger.server_log("processing message from client [",client_id,']');
-         m_logger.receive_log(client_id,*message);
+         m_logger.server_log("processing message from client [",message.client_id,']');
+         m_logger.receive_log(message.client_id,*message.content);
+         
+         {
+                  std::lock_guard received_messages_Guard(m_received_messages_mutex);
 
-         if(m_received_messages.count(client_id)){
-                  std::shared_lock received_messages_guard(m_received_messages_mutex);
-                  m_received_messages[client_id] += *message;
-         }else{
-                  std::unique_lock received_messages_guard(m_received_messages_mutex);
-                  m_received_messages[client_id] = std::move(*message);
+                  if(m_received_messages.count(message.client_id)){
+                           m_received_messages[message.client_id] += *message.content;
+                  }else{
+                           m_received_messages[message.client_id] = std::move(*message.content);
+                  }
          }
 
          if(connection_code){
                   std::shared_lock messages_guard(m_received_messages_mutex);
-                  asio::async_write(*ssl_socket,asio::buffer(m_received_messages[client_id]),on_write);
+                  asio::async_write(*message.ssl_socket,asio::buffer(m_received_messages[message.client_id]),on_write);
          }else{
-                  asio::post(m_io_context,[this,ssl_socket,client_id]{ read_message(ssl_socket,client_id); });
+                  asio::post(m_io_context,[this,ssl_socket = message.ssl_socket,client_id = message.client_id]{ 
+                           read_message(ssl_socket,client_id); 
+                  });
          }
 }
 
-void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
+void Tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
 
-         const auto on_read = [this,ssl_socket,client_id](auto read_buffer,const auto & error_code,const auto bytes_read) noexcept {
+         auto on_read = [this,ssl_socket,client_id](auto read_buffer,const auto & error_code,const auto bytes_read){
 
                   const auto received_valid_message = [&error_code,bytes_read]{
                            return bytes_read && (!error_code || error_code == asio::error::eof || error_code == asio::error::no_permission);
@@ -177,7 +180,7 @@ void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const u
                   
                   if(received_valid_message()){
                            asio::post(m_io_context,[this,ssl_socket,read_buffer,client_id,error_code]{
-                                    process_message(ssl_socket,read_buffer,client_id,error_code);
+                                    process_message({ssl_socket,read_buffer,client_id},error_code);
                            });
                   }else{
                            m_logger.error_log(error_code,error_code.message());
@@ -185,7 +188,7 @@ void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const u
                   }
          };
 
-         const auto on_read_wait_over = [this,ssl_socket,client_id,on_read](const auto & error_code) noexcept {
+         auto on_read_wait_over = [this,ssl_socket,client_id,on_read](const auto & error_code){
 
                   if(!error_code){
                            m_logger.server_log("message received from client [",client_id,']');
@@ -204,9 +207,9 @@ void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const u
          ssl_socket->lowest_layer().async_wait(tcp_socket::wait_read,on_read_wait_over);
 }
 
-void tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
+void Tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
          
-         const auto on_handshake = [this,ssl_socket,client_id](const auto & error_code) noexcept {
+         auto on_handshake = [this,ssl_socket,client_id](const auto & error_code){
 
                   if(!error_code){
                            m_logger.server_log("handshake successful with client [",client_id,']');
@@ -222,13 +225,13 @@ void tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,co
          ssl_socket->async_handshake(asio::ssl::stream_base::handshake_type::server,on_handshake);
 }
 
-uint64_t tcp_server::get_spare_id() const noexcept {
-         uint64_t unique_id = 0;
+uint64_t Tcp_server::get_spare_id() const noexcept {
          std::shared_lock client_id_guard(m_client_id_mutex);
+         uint64_t unique_id = random_id_range(random_generator);
          
-         do{
-                  unique_id = id_range(generator);
-         }while(m_active_client_ids.count(unique_id));
+         for(;m_active_client_ids.count(unique_id);){
+                  unique_id = random_id_range(random_generator);
+         }
 
          return unique_id;
 }
