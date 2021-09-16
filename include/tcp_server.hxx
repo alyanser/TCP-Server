@@ -100,12 +100,12 @@ inline void Tcp_server::configure_acceptor() noexcept {
 
 inline auto Tcp_server::get_random_spare_id() const noexcept {
          std::shared_lock client_id_guard(m_client_id_mutex);
-         uint64_t unique_id = random_id_range(random_generator);
-         
-         for(;m_active_client_ids.count(unique_id);){
-                  unique_id = random_id_range(random_generator);
-         }
+         uint64_t unique_id = 0;
 
+	do{
+		unique_id = random_id_range(random_generator);
+	}while(m_active_client_ids.count(unique_id));
+         
          return unique_id;
 }
 
