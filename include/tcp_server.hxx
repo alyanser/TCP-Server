@@ -27,17 +27,17 @@ public:
                   uint64_t client_id;
          };
 
-         Tcp_server(uint8_t thread_count,uint16_t listen_port,std::string_view auth_dir) noexcept;
-         ~Tcp_server() noexcept;
+         Tcp_server(uint8_t thread_count,uint16_t listen_port,std::string_view auth_dir);
          Tcp_server(const Tcp_server & rhs) = delete;
          Tcp_server(Tcp_server && rhs) = delete;
          Tcp_server & operator = (const Tcp_server & rhs) = delete;
          Tcp_server & operator = (Tcp_server && rhs) = delete;
+         ~Tcp_server();
 
          void start() noexcept;
          void shutdown() noexcept;
 private: 
-         [[nodiscard]] uint64_t get_spare_id() const noexcept;
+         [[nodiscard]] auto get_random_spare_id() const noexcept;
          void listen() noexcept;
          void connection_timeout() noexcept;
          void configure_ssl_context() noexcept;
@@ -47,8 +47,7 @@ private:
          void read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,uint64_t client_id) noexcept;
          void respond(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::string response,uint64_t client_id) noexcept;
          void process_message(const Network_message & message,const asio::error_code & connection_code) noexcept;
-                  
-///
+	///
          constexpr static uint8_t minimum_thread_count = 1;
          constexpr static uint32_t max_connections = 100;
          constexpr static uint32_t timeout_seconds = 5;
@@ -74,13 +73,13 @@ private:
          asio::thread_pool m_thread_pool;
 };
 
-inline Tcp_server::Tcp_server(const uint8_t thread_count,const uint16_t listen_port,const std::string_view auth_dir) noexcept :
+inline Tcp_server::Tcp_server(const uint8_t thread_count,const uint16_t listen_port,const std::string_view auth_dir) :
          m_listen_port(listen_port), m_auth_dir(auth_dir),
          m_thread_count(std::max(thread_count,minimum_thread_count)), m_thread_pool(m_thread_count)
 {
 }
 
-inline Tcp_server::~Tcp_server() noexcept {
+inline Tcp_server::~Tcp_server(){
          shutdown();
 }
 
@@ -97,6 +96,17 @@ inline void Tcp_server::configure_acceptor() noexcept {
          m_acceptor.set_option(asio::ip::tcp::socket::reuse_address(true));
          m_acceptor.bind(endpoint);
          m_logger.server_log("acceptor bound to port number",m_listen_port);
+}
+
+inline auto Tcp_server::get_random_spare_id() const noexcept {
+         std::shared_lock client_id_guard(m_client_id_mutex);
+         uint64_t unique_id = random_id_range(random_generator);
+         
+         for(;m_active_client_ids.count(unique_id);){
+                  unique_id = random_id_range(random_generator);
+         }
+
+         return unique_id;
 }
 
 #endif // TCP_SERVER_HXX

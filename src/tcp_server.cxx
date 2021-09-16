@@ -96,7 +96,7 @@ void Tcp_server::listen() noexcept {
 
          using id_task_type = std::packaged_task<uint64_t()>;
 
-         auto client_id_task = std::make_shared<id_task_type>([this]{ return get_spare_id(); });
+         auto client_id_task = std::make_shared<id_task_type>([this]{ return get_random_spare_id(); });
          asio::post(m_io_context,[client_id_task]{ return (*client_id_task)(); });
 
          auto ssl_socket = std::make_shared<ssl_tcp_socket>(m_io_context,m_ssl_context);
@@ -225,13 +225,3 @@ void Tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,co
          ssl_socket->async_handshake(asio::ssl::stream_base::handshake_type::server,on_handshake);
 }
 
-uint64_t Tcp_server::get_spare_id() const noexcept {
-         std::shared_lock client_id_guard(m_client_id_mutex);
-         uint64_t unique_id = random_id_range(random_generator);
-         
-         for(;m_active_client_ids.count(unique_id);){
-                  unique_id = random_id_range(random_generator);
-         }
-
-         return unique_id;
-}
