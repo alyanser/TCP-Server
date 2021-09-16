@@ -14,6 +14,7 @@ void tcp_server::start() noexcept {
          m_server_running = true;
 
          auto worker_thread = [&m_io_context = m_io_context,&m_server_running = m_server_running]() noexcept {
+
                   while(m_server_running){
                            m_io_context.run();
                   }
@@ -185,6 +186,7 @@ void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const u
          };
 
          const auto on_read_wait_over = [this,ssl_socket,client_id,on_read](const auto & error_code) noexcept {
+
                   if(!error_code){
                            m_logger.server_log("message received from client [",client_id,']');
 
@@ -205,6 +207,7 @@ void tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const u
 void tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
          
          const auto on_handshake = [this,ssl_socket,client_id](const auto & error_code) noexcept {
+
                   if(!error_code){
                            m_logger.server_log("handshake successful with client [",client_id,']');
                            ++m_active_connections;
