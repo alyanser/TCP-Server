@@ -6,24 +6,24 @@
 
 class Server_logger {
 public:
-         template<typename ... Args>
-         void server_log(Args && ... args) const noexcept;
+         template<typename ... Args_T>
+         void server_log(Args_T && ... args) const noexcept;
 
-         template<typename ... Args>
-         void error_log(Args && ... args) const noexcept;
+         template<typename ... Args_T>
+         void error_log(Args_T && ... args) const noexcept;
          
-         template<typename Message>
-         void receive_log(uint64_t client_id,Message && message) const noexcept;
+         template<typename Message_T>
+         void receive_log(std::uint64_t client_id,Message_T && message) const noexcept;
 
-         template<typename Message>
-         void send_log(uint64_t client_id,Message && message) const noexcept;
+         template<typename Message_T>
+         void send_log(std::uint64_t client_id,Message_T && message) const noexcept;
 
 private:
          mutable std::mutex m_print_mutex;
 };
 
 template<typename ... Args>
-inline void Server_logger::server_log(Args && ... args) const noexcept {
+void Server_logger::server_log(Args && ... args) const noexcept {
          std::lock_guard guard(m_print_mutex);
 
          std::cout << "[server] : ";
@@ -31,7 +31,7 @@ inline void Server_logger::server_log(Args && ... args) const noexcept {
 }
 
 template<typename ... Args>
-inline void Server_logger::error_log(Args && ... args) const noexcept {
+void Server_logger::error_log(Args && ... args) const noexcept {
          std::lock_guard guard(m_print_mutex);
 
          std::cerr << "[error_] : ";
@@ -39,7 +39,7 @@ inline void Server_logger::error_log(Args && ... args) const noexcept {
 }
 
 template<typename Message>
-inline void Server_logger::receive_log(const uint64_t client_id,Message && message) const noexcept {
+void Server_logger::receive_log(const std::uint64_t client_id,Message && message) const noexcept {
          std::lock_guard guard(m_print_mutex);
 
          std::cout << "\n*** message from client [" << client_id << "]\n\n\t--- START MESSAGE ---\n" << message
@@ -47,7 +47,7 @@ inline void Server_logger::receive_log(const uint64_t client_id,Message && messa
 }
 
 template<typename Message>
-inline void Server_logger::send_log(const uint64_t client_id,Message && message) const noexcept {
+void Server_logger::send_log(const std::uint64_t client_id,Message && message) const noexcept {
          std::lock_guard guard(m_print_mutex);
          
          std::cout << "\n*** response sent to client [" << client_id << "]\n\n\t--- START RESPONSE ---\n" << message

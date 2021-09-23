@@ -1,11 +1,11 @@
 #include "tcp_server.hxx"
 
-#include <algorithm>
-#include <asio/error.hpp>
-#include <future>
-#include <asio/dispatch.hpp>
 #include <asio/steady_timer.hpp>
+#include <asio/error.hpp>
+#include <asio/dispatch.hpp>
 #include <asio/read.hpp>
+#include <future>
+#include <algorithm>
 
 void Tcp_server::start() noexcept {
          if(m_server_running){
@@ -21,11 +21,11 @@ void Tcp_server::start() noexcept {
                   }
          };
 
-         for(uint8_t i = 0;i < m_thread_count;i++){
+         for(std::uint8_t i = 0;i < m_thread_count;i++){
                   asio::post(m_thread_pool,worker_thread);
          }
 
-         m_logger.server_log("started with",static_cast<uint16_t>(m_thread_count),"threads");
+         m_logger.server_log("started with",static_cast<std::uint16_t>(m_thread_count),"threads");
 
          configure_ssl_context();
          configure_acceptor();
@@ -40,7 +40,7 @@ void Tcp_server::shutdown() noexcept {
          m_logger.server_log("shutting down");
          m_server_running = false;
          m_executor_guard.reset();
-         m_acceptor.cancel(); //? required?
+         m_acceptor.cancel();
          m_acceptor.close(); 
          m_io_context.stop();
          m_thread_pool.join();
@@ -66,7 +66,7 @@ void Tcp_server::connection_timeout() noexcept {
          });
 }
 
-void Tcp_server::shutdown_socket(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
+void Tcp_server::shutdown_socket(std::shared_ptr<ssl_tcp_socket> ssl_socket,const std::uint64_t client_id) noexcept {
          {        
                   std::lock_guard client_id_guard(m_client_id_mutex);
                   assert(m_active_client_ids.count(client_id));
@@ -76,12 +76,12 @@ void Tcp_server::shutdown_socket(std::shared_ptr<ssl_tcp_socket> ssl_socket,cons
          try{
                   ssl_socket->lowest_layer().shutdown(tcp_socket::shutdown_both);
                   ssl_socket->lowest_layer().close();
+         	m_logger.server_log("connection closed with client [",client_id,']');
          }catch(const std::system_error & error){
                   m_logger.error_log(error.what());
          }
 
          --m_active_connections;
-         m_logger.server_log("connection closed with client [",client_id,']');
 }
 
 void Tcp_server::listen() noexcept {
@@ -94,7 +94,7 @@ void Tcp_server::listen() noexcept {
                   return;
          }
 
-         using id_task_type = std::packaged_task<uint64_t()>;
+         using id_task_type = std::packaged_task<std::uint64_t()>;
 
          auto client_id_task = std::make_shared<id_task_type>([this]{ return get_random_spare_id(); });
          asio::post(m_io_context,[client_id_task]{ return (*client_id_task)(); });
@@ -170,7 +170,7 @@ void Tcp_server::process_message(const Network_message & message,const asio::err
          }
 }
 
-void Tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
+void Tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const std::uint64_t client_id) noexcept {
 
          auto on_read = [this,ssl_socket,client_id](auto read_buffer,const auto & error_code,const auto bytes_read){
 
@@ -207,7 +207,7 @@ void Tcp_server::read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,const u
          ssl_socket->lowest_layer().async_wait(tcp_socket::wait_read,on_read_wait_over);
 }
 
-void Tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,const uint64_t client_id) noexcept {
+void Tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,const std::uint64_t client_id) noexcept {
          
          auto on_handshake = [this,ssl_socket,client_id](const auto & error_code){
 
