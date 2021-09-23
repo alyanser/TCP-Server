@@ -37,7 +37,7 @@ public:
          void start() noexcept;
          void shutdown() noexcept;
 private: 
-         [[nodiscard]] std::uint64_t get_random_spare_id() const noexcept;
+        	std::uint64_t get_random_spare_id() const noexcept;
          void listen() noexcept;
          void connection_timeout() noexcept;
          void configure_ssl_context() noexcept;
@@ -51,20 +51,20 @@ private:
          constexpr static auto minimum_thread_count = 1;
          constexpr static auto max_connections = 100;
          constexpr static auto timeout_seconds = 5;
-         inline static auto random_generator = std::mt19937(std::random_device()());
+         inline static std::mt19937 random_generator {std::random_device()()};
          inline static std::uniform_int_distribution<std::uint64_t> random_id_range;
 
          asio::io_context m_io_context;
-         asio::ssl::context m_ssl_context = asio::ssl::context(asio::ssl::context::tlsv12_server);
+         asio::ssl::context m_ssl_context {asio::ssl::context::tlsv12_server};
          asio::executor_work_guard<asio::io_context::executor_type> m_executor_guard = asio::make_work_guard(m_io_context);
-         asio::ip::tcp::acceptor m_acceptor = asio::ip::tcp::acceptor(m_io_context);
+         asio::ip::tcp::acceptor m_acceptor {m_io_context};
          std::set<std::uint64_t> m_active_client_ids;
          std::map<std::uint64_t,std::string> m_received_messages;
-         mutable std::shared_mutex m_client_id_mutex;
-         mutable std::shared_mutex m_received_messages_mutex;
          std::atomic_bool m_server_running = false;
          std::atomic_uint32_t m_active_connections = 0;
          Server_logger m_logger;
+         mutable std::shared_mutex m_client_id_mutex;
+         mutable std::shared_mutex m_received_messages_mutex;
          
          std::uint16_t m_listen_port = 0;
          std::string_view m_auth_dir;
@@ -96,6 +96,7 @@ inline void Tcp_server::configure_acceptor() noexcept {
          m_logger.server_log("acceptor bound to port number",m_listen_port);
 }
 
+[[nodiscard]]
 inline std::uint64_t Tcp_server::get_random_spare_id() const noexcept {
          std::shared_lock client_id_guard(m_client_id_mutex);
          std::uint64_t unique_id = 0;
