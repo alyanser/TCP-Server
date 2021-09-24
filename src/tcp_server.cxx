@@ -224,4 +224,3 @@ void Tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,co
          m_logger.server_log("handshake attempt with client [",client_id,']');
          ssl_socket->async_handshake(asio::ssl::stream_base::handshake_type::server,on_handshake);
 }
-
