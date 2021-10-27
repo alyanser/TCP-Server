@@ -1,15 +1,11 @@
 # TCP echo server
 Asynchronous TCP echo server implementation using asio library.
 
-<b>usage</b>
-<pre>
-build
-run "generate_certs.sh"
-launch server
-</pre>
 <b>testing:</b>
 <pre>
-openssl s_client -connect localhost:1234
+run "generate_certs.sh"
+build and launch the server
+use "openssl s_client -connect localhost:1234" to communicate with server
 </pre>
 <b>logs snippet:</b>
 <pre>
