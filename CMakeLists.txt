@@ -1,14 +1,9 @@
 cmake_minimum_required(VERSION 3.16.3)
 
-project(tcpserver)
+project(tcpserver CXX)
 
-set(CMAKE_CXX_COMPILER "clang++-13")
 set(CMAKE_CXX_STANDARD "17")
 set(CMAKE_CXX_STANDARD_REQUIRED true)
-
-set(CXX_FLAGS "-pipe -pedantic -Wall -Wextra -Wshadow -Wdouble-promotion -Wcast-align -Wconversion -Wfloat-equal -Wunreachable-code")
-set(CMAKE_CXX_FLAGS_DEBUG "-ggdb3 -fsanitize=undefined,address -fno-omit-frame-pointer ${CXX_FLAGS}")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG ${CXX_FLAGS}")
 
 add_definitions(-DASIO_STANDALONE)
 
@@ -19,8 +14,11 @@ set(SOURCES
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-include_directories(
-         SYSTEM "asio"
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
+         "ext/asio"
+)
+
+target_include_directories(${PROJECT_NAME} PRIVATE
          "include"
 )
 

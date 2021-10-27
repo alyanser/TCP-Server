@@ -1,11 +1,11 @@
 # TCP echo server
 Asynchronous TCP echo server implementation using asio library.
 
-<b>building:</b>
+<b>usage</b>
 <pre>
-git clone https://github.com/alyanser/TCP-echo-server
-cd TCP-echo-server/scripts
-bash generate_certs.sh && bash build.sh && bash run.sh
+build
+run "generate_certs.sh"
+launch server
 </pre>
 <b>testing:</b>
 <pre>

@@ -1,13 +1,14 @@
 #include "tcp_server.hxx"
 
 #include <asio/steady_timer.hpp>
-#include <asio/error.hpp>
 #include <asio/dispatch.hpp>
+#include <asio/error.hpp>
 #include <asio/read.hpp>
-#include <future>
 #include <algorithm>
+#include <future>
 
 void Tcp_server::start() noexcept {
+
          if(m_server_running){
                   return;
          }
@@ -33,6 +34,7 @@ void Tcp_server::start() noexcept {
 }
 
 void Tcp_server::shutdown() noexcept {
+         
          if(!m_server_running){
                   return;
          }
@@ -76,7 +78,7 @@ void Tcp_server::shutdown_socket(std::shared_ptr<ssl_tcp_socket> ssl_socket,cons
          try{
                   ssl_socket->lowest_layer().shutdown(tcp_socket::shutdown_both);
                   ssl_socket->lowest_layer().close();
-         	m_logger.server_log("connection closed with client [",client_id,']');
+                  m_logger.server_log("connection closed with client [",client_id,']');
          }catch(const std::system_error & error){
                   m_logger.error_log(error.what());
          }
@@ -223,4 +225,36 @@ void Tcp_server::attempt_handshake(std::shared_ptr<ssl_tcp_socket> ssl_socket,co
 
          m_logger.server_log("handshake attempt with client [",client_id,']');
          ssl_socket->async_handshake(asio::ssl::stream_base::handshake_type::server,on_handshake);
+}
+
+void Tcp_server::configure_ssl_context() noexcept {
+         m_ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::verify_peer);
+
+         try{
+                  m_ssl_context.use_certificate_file(std::string(m_auth_dir) + "certificate.pem",asio::ssl::context_base::pem);
+                  m_ssl_context.use_rsa_private_key_file(std::string(m_auth_dir) + "private_key.pem",asio::ssl::context_base::pem);
+         }catch(const std::exception & exception){
+                  m_logger.error_log(exception.what(),". Try after running generate_scripts.sh");
+                  shutdown();
+         }
+}
+
+void Tcp_server::configure_acceptor() noexcept {
+         asio::ip::tcp::endpoint endpoint(asio::ip::address_v4::any(),m_listen_port);
+         m_acceptor.open(endpoint.protocol());
+         m_acceptor.set_option(asio::ip::tcp::socket::reuse_address(true));
+         m_acceptor.bind(endpoint);
+         m_logger.server_log("acceptor bound to port number",m_listen_port);
+}
+
+[[nodiscard]]
+std::uint64_t Tcp_server::get_random_spare_id() const noexcept {
+         std::shared_lock client_id_guard(m_client_id_mutex);
+         std::uint64_t unique_id = 0;
+
+         do{
+                  unique_id = random_id_range(random_generator);
+         }while(m_active_client_ids.count(unique_id));
+         
+         return unique_id;
 }

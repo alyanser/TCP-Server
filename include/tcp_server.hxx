@@ -4,17 +4,17 @@
 #include "server_logger.hxx"
 
 #include <asio/executor_work_guard.hpp>
+#include <asio/thread_pool.hpp>
 #include <asio/ssl/context.hpp>
 #include <asio/ssl/stream.hpp>
 #include <asio/io_context.hpp>
-#include <asio/thread_pool.hpp>
 #include <asio/ip/tcp.hpp>
 #include <shared_mutex>
 #include <thread>
-#include <set>
-#include <map>
 #include <atomic>
 #include <random>
+#include <set>
+#include <map>
 
 class Tcp_server {
 public:
@@ -37,7 +37,7 @@ public:
          void start() noexcept;
          void shutdown() noexcept;
 private: 
-        	std::uint64_t get_random_spare_id() const noexcept;
+                 std::uint64_t get_random_spare_id() const noexcept;
          void listen() noexcept;
          void connection_timeout() noexcept;
          void configure_ssl_context() noexcept;
@@ -47,7 +47,7 @@ private:
          void read_message(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::uint64_t client_id) noexcept;
          void respond(std::shared_ptr<ssl_tcp_socket> ssl_socket,std::string response,std::uint64_t client_id) noexcept;
          void process_message(const Network_message & message,const asio::error_code & connection_code) noexcept;
-	///
+         ///
          constexpr static auto minimum_thread_count = 1;
          constexpr static auto max_connections = 100;
          constexpr static auto timeout_seconds = 5;
@@ -80,32 +80,6 @@ inline Tcp_server::Tcp_server(const std::uint8_t thread_count,const std::uint16_
 
 inline Tcp_server::~Tcp_server(){
          shutdown();
-}
-
-inline void Tcp_server::configure_ssl_context() noexcept {
-         m_ssl_context.set_options(asio::ssl::context::default_workarounds | asio::ssl::context::verify_peer);
-         m_ssl_context.use_certificate_file(std::string(m_auth_dir) + "certificate.pem",asio::ssl::context_base::pem);
-         m_ssl_context.use_rsa_private_key_file(std::string(m_auth_dir) + "private_key.pem",asio::ssl::context_base::pem);
-}
-
-inline void Tcp_server::configure_acceptor() noexcept {
-         asio::ip::tcp::endpoint endpoint(asio::ip::address_v4::any(),m_listen_port);
-         m_acceptor.open(endpoint.protocol());
-         m_acceptor.set_option(asio::ip::tcp::socket::reuse_address(true));
-         m_acceptor.bind(endpoint);
-         m_logger.server_log("acceptor bound to port number",m_listen_port);
-}
-
-[[nodiscard]]
-inline std::uint64_t Tcp_server::get_random_spare_id() const noexcept {
-         std::shared_lock client_id_guard(m_client_id_mutex);
-         std::uint64_t unique_id = 0;
-
-	do{
-		unique_id = random_id_range(random_generator);
-	}while(m_active_client_ids.count(unique_id));
-         
-         return unique_id;
 }
 
 #endif // TCP_SERVER_HXX
