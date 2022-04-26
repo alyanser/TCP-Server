@@ -27,7 +27,7 @@ void Server_logger::server_log(args_type && ... args) const noexcept {
          std::lock_guard guard(m_print_mutex);
 
          std::cout << "[server] : ";
-         ((std::cout << args << ' '),...) << '\n';
+         ((std::cout << std::forward<args_type>(args)<< ' '),...) << '\n';
 }
 
 template<typename ... args_type>
@@ -35,14 +35,14 @@ void Server_logger::error_log(args_type && ... args) const noexcept {
          std::lock_guard guard(m_print_mutex);
 
          std::cerr << "[error_] : ";
-         ((std::cerr << args << ' '),...) << '\n';
+         ((std::cerr << std::forward<args_type>(args) << ' '),...) << '\n';
 }
 
 template<typename message_type>
 void Server_logger::receive_log(const std::uint64_t client_id,message_type && message) const noexcept {
          std::lock_guard guard(m_print_mutex);
 
-         std::cout << "\n*** message from client [" << client_id << "]\n\n\t--- START MESSAGE ---\n" << message
+         std::cout << "\n*** message from client [" << client_id << "]\n\n\t--- START MESSAGE ---\n" << std::forward<message_type>(message)
                             << "\n\t--- END MESSAGE" "---\n\n";
 }
 
@@ -50,7 +50,7 @@ template<typename message_type>
 void Server_logger::send_log(const std::uint64_t client_id,message_type && message) const noexcept {
          std::lock_guard guard(m_print_mutex);
          
-         std::cout << "\n*** response sent to client [" << client_id << "]\n\n\t--- START RESPONSE ---\n" << message
+         std::cout << "\n*** response sent to client [" << client_id << "]\n\n\t--- START RESPONSE ---\n" << std::forward<message_type>(message)
                             << "\n\t--- END" "RESPONSE---\n\n";
 }
 
