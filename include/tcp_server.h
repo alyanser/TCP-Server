@@ -1,7 +1,7 @@
 #ifndef TCP_SERVER_HXX
 #define TCP_SERVER_HXX
 
-#include "server_logger.hxx"
+#include "server_logger.h"
 
 #include <asio/executor_work_guard.hpp>
 #include <asio/thread_pool.hpp>

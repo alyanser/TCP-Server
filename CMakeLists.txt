@@ -8,8 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED true)
 add_definitions(-DASIO_STANDALONE)
 
 set(SOURCES
-         src/main.cxx
-         src/tcp_server.cxx
+         src/main.cc
+         src/tcp_server.cc
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
